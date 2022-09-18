@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using Field.General;
 using Field.Models;
-//using Field;
+using Field.Textures;
 
 namespace Field;
 
@@ -50,7 +50,7 @@ FEATURES
     #include ""common/features.hlsl""
     //Feature( F_ALPHA_TEST, 0..1, ""Rendering"" );
     //Feature( F_PREPASS_ALPHA_TEST, 0..1, ""Rendering"" );
-
+    //alphatest
     Feature( F_HIGH_QUALITY_REFLECTIONS, 0..1, ""Rendering"" );
 }
 
@@ -109,19 +109,22 @@ PS
         //Console.WriteLine("Material: " + material.Hash);
         hlsl = new StringReader(hlslText);
         vfx = new StringBuilder();
-        isTerrain = bIsTerrain;
+       
         bOpacityEnabled = false;
         ProcessHlslData();
         if (bOpacityEnabled)
         {
-            vfxStructure = vfxStructure.Replace(@"//Feature( F_ALPHA_TEST, 0..1, ""Rendering"" );", @"Feature( F_ALPHA_TEST, 0..1, ""Rendering"" );");
-            vfxStructure = vfxStructure.Replace(@"//Feature( F_PREPASS_ALPHA_TEST, 0..1, ""Rendering"" );", @"Feature( F_PREPASS_ALPHA_TEST, 0..1, ""Rendering"" );");
+            vfx.AppendLine("// masked");
+            StringBuilder replace = new StringBuilder();
+            replace.AppendLine(@"   Feature( F_ALPHA_TEST, 0..1, ""Rendering"" );").ToString();
+            replace.AppendLine(@"   Feature( F_PREPASS_ALPHA_TEST, 0..1, ""Rendering"" );").ToString();
+        
+            vfxStructure = vfxStructure.Replace("//alphatest", replace.ToString());
+            vfxStructure = vfxStructure.Replace("//translucent", "#define S_TRANSLUCENT 1");
             
-            //vfxStructure = vfxStructure.Replace("//translucent", "#define S_TRANSLUCENT 1");
-            //Turns out I dont need S_TRANSLUCENT to use alpha test
         }
         vfx.AppendLine(vfxStructure);
-
+        // WriteTextureComments(material, bIsVertexShader);
         WriteCbuffers(material, bIsVertexShader);
         WriteFunctionDefinition(material, bIsVertexShader);
         hlsl = new StringReader(hlslText);
@@ -325,24 +328,24 @@ PS
     
     private void WriteFunctionDefinition(Material material, bool bIsVertexShader)
     {
-        if (!bIsVertexShader)
-        {
-            foreach (var i in inputs)
-            {
-                if (i.Type == "float4")
-                {
-                    vfx.AppendLine($"   static {i.Type} {i.Variable} = " + "{1, 1, 1, 1};\n");
-                }
-                else if (i.Type == "float3")
-                {
-                    vfx.AppendLine($"   static {i.Type} {i.Variable} = " + "{1, 1, 1};\n");
-                }
-                else if (i.Type == "uint")
-                {
-                    vfx.AppendLine($"   static {i.Type} {i.Variable} = " + "1;\n");
-                }
-            }
-        }
+        // if (!bIsVertexShader)
+        // {
+        //     foreach (var i in inputs)
+        //     {
+        //         if (i.Type == "float4")
+        //         {
+        //             vfx.AppendLine($"   static {i.Type} {i.Variable} = " + "{1, 1, 1, 1};\n");
+        //         }
+        //         else if (i.Type == "float3")
+        //         {
+        //             vfx.AppendLine($"   static {i.Type} {i.Variable} = " + "{1, 1, 1};\n");
+        //         }
+        //         else if (i.Type == "uint")
+        //         {
+        //             vfx.AppendLine($"   static {i.Type} {i.Variable} = " + "1;\n");
+        //         }
+        //     }
+        // }
 
         if (!bIsVertexShader)
         {
@@ -362,7 +365,7 @@ PS
 
                     //vfx.AppendLine($"   {texture.Type} {texture.Variable},");
                     vfx.AppendLine($"   CreateInputTexture2D( TextureT{e.TextureIndex}, {type}, 8, \"\", \"\",  \"Textures,10/{e.TextureIndex}\", Default3( 1.0, 1.0, 1.0 ));");
-                    vfx.AppendLine($"   CreateTexture2DWithoutSampler( g_t{e.TextureIndex} )  < Channel( RGBA,  Box( TextureT{e.TextureIndex} ), {type} ); OutputFormat( BC7 ); SrgbRead( {e.Texture.IsSrgb()} ); >; ");
+                    vfx.AppendLine($"   CreateTexture2DWithoutSampler( g_t{e.TextureIndex} )  < Channel( RGBA,  Box( TextureT{e.TextureIndex} ), {type} ); OutputFormat( BC7 ); SrgbRead( {e.Texture.IsSrgb()} ); >; \n");
                     vfx.AppendLine($"   TextureAttribute(g_t{e.TextureIndex}, g_t{e.TextureIndex});\n"); //Prevents some inputs not appearing for some reason
                 }
             }
@@ -381,11 +384,11 @@ PS
 
             if(bOpacityEnabled)
             {
-                vfx.Replace("//StaticCombo( S_ALPHA_TEST, F_ALPHA_TEST, Sys( PC ) );", "StaticCombo( S_ALPHA_TEST, F_ALPHA_TEST, Sys( PC ) );");
-                vfx.Replace("//StaticCombo( S_PREPASS_ALPHA_TEST, F_PREPASS_ALPHA_TEST, Sys( PC ) );", "StaticCombo( S_PREPASS_ALPHA_TEST, F_PREPASS_ALPHA_TEST, Sys( PC ) );");
+                 vfx.AppendLine("    StaticCombo( S_ALPHA_TEST, F_ALPHA_TEST, Sys( PC ) );");
+	             vfx.AppendLine("    StaticCombo( S_PREPASS_ALPHA_TEST, F_PREPASS_ALPHA_TEST, Sys( PC ) );");
             }
 
-            vfx.AppendLine("    float4 MainPs( PixelInput i ) : SV_Target0");
+            vfx.AppendLine("    PixelOutput MainPs( PixelInput i )");
             vfx.AppendLine("    {");
 
             // Output render targets, todo support vertex shader
@@ -393,21 +396,40 @@ PS
             vfx.AppendLine("        float alpha = 1;");
             vfx.AppendLine("        float4 tx = float4(i.vTextureCoords, 1, 1);");
 
-            vfx.AppendLine("        float4 v0 = {1,1,1,1};"); //Seems to only be used for normals. No idea what it is.
+            vfx.AppendLine("        float4 v0 = {0.5,0.5,1,1};"); //Seems to only be used for normals.
             vfx.AppendLine("        float4 v1 = {i.vNormalWs, 1};"); //Pretty sure this is mesh normals
             vfx.AppendLine("        float4 v2 = {i.vTangentUWs, 1};"); //Tangent? Seems to only be used for normals.
-            vfx.AppendLine("        float4 v3 = {i.vTextureCoords, 1,1};"); //99.9% sure this is always UVs
-            vfx.AppendLine("        float4 v4 = i.vBlendValues;"); //Mostly seen on materials with parallax. Some kind of view vector or matrix?
-            vfx.AppendLine("        float4 v5 = i.vBlendValues;"); //seems to always be vertex color/vertex color alpha
+            vfx.AppendLine("        float4 v3 = {i.vTextureCoords, 1,1};"); //seems only used as texture coords
+            vfx.AppendLine("        float4 v4 = i.vBlendValues;"); //Not sure if this is VC or not
+            vfx.AppendLine("        float4 v5 = i.vBlendValues;"); //seems like this is always the same as v4/only used if shader uses VC alpha
             //vfx.AppendLine("        uint v6 = 1;"); //no idea
-
             foreach (var i in inputs)
             {
                 if (i.Type == "uint")
                 {
                     vfx.AppendLine($"       {i.Variable}.x = {i.Variable}.x * tx.x;");
                 }
-            }
+            }        
+
+            // foreach (var i in inputs)
+            // {
+            //     if (i.Type == "float4")
+            //     {
+            //         vfx.AppendLine($"       {i.Variable}.xyzw = {i.Variable}.xyzw * tx.xyzw;");
+            //     }
+            //     else if (i.Type == "float3")
+            //     {
+            //         vfx.AppendLine($"       {i.Variable}.xyz = {i.Variable}.xyz * tx.xyz;");
+            //     }
+            //     else if (i.Type == "uint")
+            //     {
+            //         vfx.AppendLine($"       {i.Variable}.x = {i.Variable}.x * tx.x;");
+            //     }
+            // }
+            // vfx.Replace("v0.xyzw = v0.xyzw * tx.xyzw;", "v0.xyzw = v0.xyzw;");
+            // vfx.Replace("v1.xyzw = v1.xyzw * tx.xyzw;", "v1.xyzw = v1.xyzw;");
+            // vfx.Replace("v2.xyzw = v2.xyzw * tx.xyzw;", "v2.xyzw = v2.xyzw;");
+            // vfx.Replace("v5.xyzw = v5.xyzw * tx.xyzw;", "v5.xyzw = v5.xyzw;");
         }
     }
 
@@ -497,7 +519,7 @@ PS
         
         Material mat = ToMaterial(i, float4(o0.xyz, 1), saturate(normal), float4(1 - smoothness, saturate(o2.x), saturate(o2.y * 2), 1));
         mat.Opacity = alpha;
-        mat.Emission = clamp((o2.y - 0.5) * 2 * 8 * mat.Albedo, 0, 100);
+        mat.Emission = clamp((o2.y - 0.5) * 2 * 6 * mat.Albedo, 0, 100);
         
         ShadingModelValveStandard sm;
 		
