@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using Field.Entities;
 using Field.General;
+using Field.Utils;
 using File = System.IO.File;
 
 namespace Field;
@@ -50,6 +51,33 @@ public class Material : Tag
                 e.Texture.SavetoFile(path); 
             }
         }
+    }
+
+    private byte[] GetBytecode(ShaderType type) {
+        var path = GetTempPath(type);
+        lock (Lock) {
+            if (!File.Exists(path)) {
+                var bytecode = type switch {
+                    ShaderType.Pixel => Header.PixelShader.GetBytecode(),
+                    ShaderType.Vertex => Header.VertexShader.GetBytecode(),
+                    _ => Header.ComputeShader.GetBytecode()
+                };
+                Directory.GetParent(path)?.Create();
+                File.WriteAllBytes(path, bytecode);
+                return bytecode;
+            }
+            return File.ReadAllBytes(path);
+        }
+    }
+    
+    private string Disassemble(ShaderType type) {
+        var fileName = GetTempPath(type, ".asm");
+        if (!File.Exists(fileName)) {
+            var data = DirectX.DisassembleDXBC(GetBytecode(type));
+            File.WriteAllText(fileName, data);
+            return data;
+        }
+        return File.ReadAllText(fileName);
     }
     
     // [DllImport("HLSLDecompiler.dll", EntryPoint = "DecompileHLSL", CallingConvention = CallingConvention.Cdecl)]
@@ -130,8 +158,8 @@ public class Material : Tag
                     Thread.Sleep(100);
                 }
             }
+            return hlsl;
         }
-        return hlsl;
     }
     
     public void SavePixelShader(string saveDirectory, bool isTerrain = false)
@@ -254,6 +282,174 @@ public class Material : Tag
             }
         }
     }
+    #region Texture Manifest
+
+    private JsonObject CreateTextureManifest() {
+        var root = new JsonObject();
+        var textureMeta = new JsonObject();
+        if(Header.PixelShader != null) {
+            var i = CreateShaderIndices(Header.PSTextures);
+            if(i.Count > 0)
+                root["pixelShader"] = new JsonObject { ["indices"] = i };
+            GetShaderTextureMeta(textureMeta, Header.PSTextures);
+        }
+        if(Header.VertexShader != null) {
+            var i = CreateShaderIndices(Header.VSTextures);
+            if(i.Count > 0)
+                root["vertexShader"] = new JsonObject { ["indices"] = i };
+            GetShaderTextureMeta(textureMeta, Header.VSTextures);
+        }
+        if(Header.ComputeShader != null) {
+            var i = CreateShaderIndices(Header.CSTextures);
+            if(i.Count > 0)
+                root["computeShader"] = new JsonObject { ["indices"] = i };
+            GetShaderTextureMeta(textureMeta, Header.CSTextures);
+        }
+        root["textures"] = textureMeta;
+        root["format"] = GetTextureExtension(TextureExtractor.Format);
+        return root;
+    }
+    
+    private static void GetShaderTextureMeta(JsonObject table, List<D2Class_CF6D8080> textures) {
+        foreach(var e in textures) {
+            if(table.ContainsKey(e.Texture.Hash))
+                continue;
+            var meta = new JsonObject {
+                ["srgb"] = e.Texture.IsSrgb(),
+                ["volume"] = e.Texture.IsVolume(),
+                ["cubemap"] = e.Texture.IsCubemap()
+            };
+            table[e.Texture.Hash] = meta;
+        }
+    }
+    
+    private static JsonObject CreateShaderIndices(List<D2Class_CF6D8080> textures) {
+        var textureMeta = new JsonObject();
+        foreach(var e in textures)
+            textureMeta[e.TextureIndex.ToString()] = e.Texture.Hash.ToString();
+        return textureMeta;
+    }
+    
+    #endregion
+    
+    #region Platform-specific exports
+
+    private void ExportMaterialRaw(string path) {
+        if(Header.PixelShader != null) {
+            try { File.WriteAllText($"{path}/{GetShaderPrefix(ShaderType.Pixel)}_{Hash}.hlsl", Decompile(ShaderType.Pixel)); }
+            catch (IOException) { }
+            try { File.WriteAllText($"{path}/{GetShaderPrefix(ShaderType.Pixel)}_{Hash}.asm", Disassemble(ShaderType.Pixel)); }
+            catch (IOException) { }
+            Console.WriteLine($"Exported raw PixelShader for Material {Hash}.");
+        }
+        if(Header.VertexShader != null) {
+            try { File.WriteAllText($"{path}/{GetShaderPrefix(ShaderType.Vertex)}_{Hash}.hlsl", Decompile(ShaderType.Vertex)); }
+            catch (IOException) { }
+            try { File.WriteAllText($"{path}/{GetShaderPrefix(ShaderType.Vertex)}_{Hash}.asm", Disassemble(ShaderType.Vertex)); }
+            catch (IOException) { }
+            Console.WriteLine($"Exported raw VertexShader for Material {Hash}.");
+        }
+        if(Header.ComputeShader != null) {
+            try { File.WriteAllText($"{path}/{GetShaderPrefix(ShaderType.Compute)}_{Hash}.hlsl", Decompile(ShaderType.Compute)); }
+            catch (IOException) { }
+            try { File.WriteAllText($"{path}/{GetShaderPrefix(ShaderType.Compute)}_{Hash}.asm", Disassemble(ShaderType.Compute)); }
+            catch (IOException) { }
+            Console.WriteLine($"Exported raw ComputeShader for Material {Hash}.");
+        }
+    }
+
+    private void ExportMaterialBlender(string path) {
+        // TODO: Merge Vertex and Pixel Shaders if applicable
+        // TODO: Create a proper import script, assuming textures are bound and loaded
+        if(Header.PixelShader != null) {
+            var bpy = new NodeConverter().HlslToBpy(this, $"{path}/../..", Decompile(ShaderType.Pixel), false);
+            if(bpy != string.Empty) {
+                try { File.WriteAllText($"{path}/{GetShaderPrefix(ShaderType.Pixel)}_{Hash}.py", bpy); }
+                catch (IOException) { }
+                Console.WriteLine($"Exported Blender PixelShader {Hash}.");
+            }
+        }
+        if(Header.VertexShader != null) {
+            var bpy = new NodeConverter().HlslToBpy(this, $"{path}/../..", Decompile(ShaderType.Vertex), true);
+            if(bpy != string.Empty) {
+                try { File.WriteAllText($"{path}/{GetShaderPrefix(ShaderType.Vertex)}_{Hash}.py", bpy); }
+                catch (IOException) { }
+                Console.WriteLine($"Exported Blender VertexShader {Hash}.");
+            }
+        }
+        // I don't think Blender can even handle compute shaders, so I'll leave that out. If it can, it's the same as above.
+    }
+
+    private void ExportMaterialUnreal(string path) {
+        if(Header.PixelShader != null) {
+            var usf = new UsfConverter().HlslToUsf(this, Decompile(ShaderType.Pixel), false);
+            if(usf != string.Empty) {
+                try { File.WriteAllText($"{path}/{GetShaderPrefix(ShaderType.Pixel)}_{Hash}.usf", usf); }
+                catch (IOException) { }
+                Console.WriteLine($"Exported Unreal PixelShader {Hash}.");
+            }
+        }
+        if(Header.VertexShader != null) {
+            var usf = new UsfConverter().HlslToUsf(this, Decompile(ShaderType.Vertex), true);
+            if(usf != string.Empty) {
+                try { File.WriteAllText($"{path}/{GetShaderPrefix(ShaderType.Vertex)}_{Hash}.usf", usf); }
+                catch (IOException) { }
+                Console.WriteLine($"Exported Unreal VertexShader {Hash}.");
+            }
+        }
+    }
+
+    private void ExportMaterialSource2(string path) {
+        if(Header.PixelShader != null) {
+            var vfx = new VfxConverter().HlslToVfx(this, Decompile(ShaderType.Pixel), false);
+            if(vfx != string.Empty) {
+                try { File.WriteAllText($"{path}/{GetShaderPrefix(ShaderType.Pixel)}_{Hash}.vfx", vfx); }
+                catch (IOException) { }
+                Console.WriteLine($"Exported Source 2 PixelShader {Hash}.");
+            }
+            var materialBuilder = new StringBuilder("Layer0 \n{");
+            materialBuilder.AppendLine($"\n\tshader \"{GetShaderPrefix(ShaderType.Pixel)}_{Hash}.vfx\"");
+            materialBuilder.AppendLine("\tF_ALPHA_TEST 1");
+            foreach(var e in Header.PSTextures.Where(e => e.Texture != null))
+                materialBuilder.AppendLine($"\tTextureT{e.TextureIndex} \"materials/Textures/{e.Texture.Hash}{GetTextureExtension(TextureExtractor.Format)}\"");
+            materialBuilder.AppendLine("}");
+            Directory.CreateDirectory($"{path}/materials");
+            try { File.WriteAllText($"{path}/materials/{Hash}.vmat", materialBuilder.ToString()); }
+            catch (IOException) { }
+        }
+    }
+    
+    #endregion
+
+    #region Utils
+    
+    private static string GetTextureExtension(ETextureFormat format) {
+        return format switch {
+            ETextureFormat.PNG => ".png",
+            ETextureFormat.TGA => ".tga",
+            _ => ".dds"
+        };
+    }
+
+    private static string GetShaderPrefix(ShaderType type) {
+        return type switch {
+            ShaderType.Pixel => "PS",
+            ShaderType.Vertex => "VS",
+            _ => "PS"
+        };
+    }
+    
+    private string GetTempPath(ShaderType type, string extension = ".bin") {
+        var dir = $"{Path.GetTempPath()}/CharmCache/Shaders";
+        var path = $"{dir}/{GetShaderPrefix(type)}_{Hash}{extension}";
+        if(!File.Exists(dir))
+            Directory.CreateDirectory(dir);
+        return path;
+    }
+
+    private enum ShaderType { Pixel, Vertex, Compute }
+    
+    #endregion
 }
 
 [StructLayout(LayoutKind.Sequential, Size = 0x3D0)]
