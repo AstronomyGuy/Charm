@@ -77,6 +77,27 @@ public class AutomatedImporter
         //        break;
         //}
         //File.WriteAllText($"{saveDirectory}/{meshName}_import_to_blender.py", textExtensions);
+        // change extension
+        string textExtensions = File.ReadAllText($"{saveDirectory}/{meshName}_import_to_blender.py");
+        switch (textureFormat)
+        {
+            case ETextureFormat.PNG:
+                textExtensions = textExtensions.Replace("TEX_EXT", ".png");
+                break;
+            case ETextureFormat.TGA:
+                textExtensions = textExtensions.Replace("TEX_EXT", ".tga");
+                break;
+            default:
+                textExtensions = textExtensions.Replace("TEX_EXT", ".dds");
+                break;
+        }
+        File.WriteAllText($"{saveDirectory}/{meshName}_import_to_blender.py", textExtensions);
+
+        var betterScriptPath = $"{saveDirectory}/{meshName}_import_blender.py";
+        File.Copy("import_blender.py", betterScriptPath, true);
+        var betterScript = File.ReadAllText(betterScriptPath);
+        betterScript = betterScript.Replace("<<REPLACE_HASH>>", $"{meshName}");
+        File.WriteAllText(betterScriptPath, betterScript);
     }
 
     
