@@ -95,7 +95,7 @@ public partial class EntityView : UserControl
         {
             var dynamicParts = entity.Load(ELOD.MostDetail);
             fbxHandler.AddEntityToScene(entity, dynamicParts, ELOD.MostDetail, boneNodes);
-            if (exportType == EExportTypeFlag.Full)
+            if (exportType == EExportTypeFlag.Full) { 
                 var settings = new ExportSettings() {
                     Unreal = ConfigHandler.GetUnrealInteropEnabled(),
                     Blender = ConfigHandler.GetBlenderInteropEnabled(),
@@ -122,8 +122,8 @@ public partial class EntityView : UserControl
         }
         
         // Scale and rotate
-        if(boneNodes != null && boneNodes.Count > 0)
-            fbxHandler.ScaleAndRotateForBlender(boneNodes[0]);
+        //if(boneNodes != null && boneNodes.Count > 0)
+        //    fbxHandler.ScaleAndRotateForBlender(boneNodes[0]);
         
         fbxHandler.ExportScene($"{savePath}/{meshName}.fbx");
         fbxHandler.Dispose();
