@@ -154,126 +154,126 @@ def assemble_mat():
         variable_dict['v5.w'] = attribute.outputs[3]
 
     # <<<REPLACE WITH SCRIPT>>>
+    if INPUT_shader_type == "PS":
+        if True:  # Base Color (Albedo)
+            combineRGB = matnodes.new("ShaderNodeCombineColor")
+            link(variable_dict['o0.x'], combineRGB.inputs[0])
+            link(variable_dict['o0.y'], combineRGB.inputs[1])
+            link(variable_dict['o0.z'], combineRGB.inputs[2])
+            variable_dict['output_rgb_albedo'] = combineRGB.outputs[0]
+            print("rgb")
+            link(combineRGB.outputs[0], principled_node.inputs[0])
+            link(combineRGB.outputs[0], principled_node.inputs[19])
 
-    if True:  # Base Color (Albedo)
-        combineRGB = matnodes.new("ShaderNodeCombineColor")
-        link(variable_dict['o0.x'], combineRGB.inputs[0])
-        link(variable_dict['o0.y'], combineRGB.inputs[1])
-        link(variable_dict['o0.z'], combineRGB.inputs[2])
-        variable_dict['output_rgb_albedo'] = combineRGB.outputs[0]
-        print("rgb")
-        link(combineRGB.outputs[0], principled_node.inputs[0])
-        link(combineRGB.outputs[0], principled_node.inputs[19])
+        if True:  # Normal
+            # Biased Normal
+            o1Node = matnodes.new("ShaderNodeCombineXYZ")
+            link(variable_dict['o1.x'], o1Node.inputs[0])
+            link(variable_dict['o1.y'], o1Node.inputs[1])
+            link(variable_dict['o1.z'], o1Node.inputs[2])
 
-    if True:  # Normal
-        # Biased Normal
-        o1Node = matnodes.new("ShaderNodeCombineXYZ")
-        link(variable_dict['o1.x'], o1Node.inputs[0])
-        link(variable_dict['o1.y'], o1Node.inputs[1])
-        link(variable_dict['o1.z'], o1Node.inputs[2])
+            biasedNormalNode = matnodes.new("ShaderNodeVectorMath")
+            biasedNormalNode.operation = 'SUBTRACT'
+            link(o1Node.outputs[0], biasedNormalNode.inputs[0])
+            biasedNormalNode.inputs[1].default_value = 0.5, 0.5, 0.5
 
-        biasedNormalNode = matnodes.new("ShaderNodeVectorMath")
-        biasedNormalNode.operation = 'SUBTRACT'
-        link(o1Node.outputs[0], biasedNormalNode.inputs[0])
-        biasedNormalNode.inputs[1].default_value = 0.5, 0.5, 0.5
-
-        # World-Space Normal
-        biasedNormalLengthNode = matnodes.new("ShaderNodeVectorMath")
-        biasedNormalLengthNode.operation = 'LENGTH'
-        link(biasedNormalNode.outputs[0], biasedNormalLengthNode.inputs[0])
+            # World-Space Normal
+            biasedNormalLengthNode = matnodes.new("ShaderNodeVectorMath")
+            biasedNormalLengthNode.operation = 'LENGTH'
+            link(biasedNormalNode.outputs[0], biasedNormalLengthNode.inputs[0])
         
-        invert_biasedNormalLengthNode = matnodes.new("ShaderNodeMath")
-        invert_biasedNormalLengthNode.operation = 'DIVIDE'
-        invert_biasedNormalLengthNode.inputs[0].default_value = 1
-        link(biasedNormalLengthNode.outputs[0], invert_biasedNormalLengthNode.inputs[1])
+            invert_biasedNormalLengthNode = matnodes.new("ShaderNodeMath")
+            invert_biasedNormalLengthNode.operation = 'DIVIDE'
+            invert_biasedNormalLengthNode.inputs[0].default_value = 1
+            link(biasedNormalLengthNode.outputs[0], invert_biasedNormalLengthNode.inputs[1])
         
-        worldSpaceNormalNode = matnodes.new("ShaderNodeVectorMath")
-        worldSpaceNormalNode.operation = 'SCALE'
-        link(biasedNormalNode.outputs[0], worldSpaceNormalNode.inputs[0])
-        link(invert_biasedNormalLengthNode.outputs[0], worldSpaceNormalNode.inputs[1])
+            worldSpaceNormalNode = matnodes.new("ShaderNodeVectorMath")
+            worldSpaceNormalNode.operation = 'SCALE'
+            link(biasedNormalNode.outputs[0], worldSpaceNormalNode.inputs[0])
+            link(invert_biasedNormalLengthNode.outputs[0], worldSpaceNormalNode.inputs[1])
 
-        # Adjust Individual Values
-        separateNormalNode = matnodes.new("ShaderNodeSeparateXYZ")
-        link(worldSpaceNormalNode.outputs[0], separateNormalNode.inputs[0])
+            # Adjust Individual Values
+            separateNormalNode = matnodes.new("ShaderNodeSeparateXYZ")
+            link(worldSpaceNormalNode.outputs[0], separateNormalNode.inputs[0])
 
-        normalYNode = matnodes.new("ShaderNodeMath")
-        normalYNode.operation = 'SUBTRACT'
-        normalYNode.inputs[0].default_value = 1
-        link(separateNormalNode.outputs[1], normalYNode.inputs[1])
+            normalYNode = matnodes.new("ShaderNodeMath")
+            normalYNode.operation = 'SUBTRACT'
+            normalYNode.inputs[0].default_value = 1
+            link(separateNormalNode.outputs[1], normalYNode.inputs[1])
 
-        normalXYNode = matnodes.new('ShaderNodeCombineXYZ')
-        link(separateNormalNode.outputs[0], normalXYNode.inputs[0])
-        link(separateNormalNode.outputs[1], normalXYNode.inputs[1])
+            normalXYNode = matnodes.new('ShaderNodeCombineXYZ')
+            link(separateNormalNode.outputs[0], normalXYNode.inputs[0])
+            link(separateNormalNode.outputs[1], normalXYNode.inputs[1])
 
-        normalZDotProductNode = matnodes.new("ShaderNodeVectorMath")
-        normalZDotProductNode.operation = 'DOT_PRODUCT'
-        link(normalXYNode.outputs[0], normalZDotProductNode.inputs[0])
-        link(normalXYNode.outputs[0], normalZDotProductNode.inputs[1])
+            normalZDotProductNode = matnodes.new("ShaderNodeVectorMath")
+            normalZDotProductNode.operation = 'DOT_PRODUCT'
+            link(normalXYNode.outputs[0], normalZDotProductNode.inputs[0])
+            link(normalXYNode.outputs[0], normalZDotProductNode.inputs[1])
 
-        normalZSaturateNode = matnodes.new("ShaderNodeClamp")
-        link(normalZDotProductNode.outputs[0], normalZSaturateNode.inputs[0])
+            normalZSaturateNode = matnodes.new("ShaderNodeClamp")
+            link(normalZDotProductNode.outputs[0], normalZSaturateNode.inputs[0])
 
-        normalZSubtractNode = matnodes.new("ShaderNodeMath")
-        normalZSubtractNode.operation = 'SUBTRACT'
-        normalZSubtractNode.inputs[0].default_value = 1
-        link(normalZSaturateNode.outputs[0], normalZSubtractNode.inputs[1])
+            normalZSubtractNode = matnodes.new("ShaderNodeMath")
+            normalZSubtractNode.operation = 'SUBTRACT'
+            normalZSubtractNode.inputs[0].default_value = 1
+            link(normalZSaturateNode.outputs[0], normalZSubtractNode.inputs[1])
 
-        normalZNode = matnodes.new("ShaderNodeMath")
-        normalZNode.operation = 'SQRT'
-        link(normalZSubtractNode.outputs[0], normalZNode.inputs[0])
+            normalZNode = matnodes.new("ShaderNodeMath")
+            normalZNode.operation = 'SQRT'
+            link(normalZSubtractNode.outputs[0], normalZNode.inputs[0])
 
-        # Final Assembly
-        finalNormalNode = matnodes.new("ShaderNodeCombineXYZ")
-        link(separateNormalNode.outputs[0], finalNormalNode.inputs[0])
-        link(normalYNode.outputs[0], finalNormalNode.inputs[1])
-        link(normalZNode.outputs[0], finalNormalNode.inputs[2])
+            # Final Assembly
+            finalNormalNode = matnodes.new("ShaderNodeCombineXYZ")
+            link(separateNormalNode.outputs[0], finalNormalNode.inputs[0])
+            link(normalYNode.outputs[0], finalNormalNode.inputs[1])
+            link(normalZNode.outputs[0], finalNormalNode.inputs[2])
 
-        link(finalNormalNode.outputs[0], principled_node.inputs[22])
-        print("Normal")
+            link(finalNormalNode.outputs[0], principled_node.inputs[22])
+            print("Normal")
 
-    if True:  # Roughness
-        smoothness_subtract = matnodes.new("ShaderNodeMath")
-        smoothness_subtract.operation = 'SUBTRACT'
-        link(variable_dict['o2.y'], smoothness_subtract.inputs[0])
-        smoothness_subtract.inputs[1].default_value = 0.375
+        if True:  # Roughness
+            smoothness_subtract = matnodes.new("ShaderNodeMath")
+            smoothness_subtract.operation = 'SUBTRACT'
+            link(variable_dict['o2.y'], smoothness_subtract.inputs[0])
+            smoothness_subtract.inputs[1].default_value = 0.375
 
-        smoothness_multiply = matnodes.new("ShaderNodeMath")
-        smoothness_multiply.operation = 'MULTIPLY'
-        link(smoothness_subtract.outputs[0], smoothness_multiply.inputs[0])
-        smoothness_multiply.inputs[1].default_value = 8
+            smoothness_multiply = matnodes.new("ShaderNodeMath")
+            smoothness_multiply.operation = 'MULTIPLY'
+            link(smoothness_subtract.outputs[0], smoothness_multiply.inputs[0])
+            smoothness_multiply.inputs[1].default_value = 8
 
-        rough_saturate = matnodes.new("ShaderNodeClamp")
-        # existing defaults are fine
-        link(smoothness_multiply.outputs[0], rough_saturate.inputs[0])
+            rough_saturate = matnodes.new("ShaderNodeClamp")
+            # existing defaults are fine
+            link(smoothness_multiply.outputs[0], rough_saturate.inputs[0])
 
-        smoothness_invert = matnodes.new("ShaderNodeMath")
-        smoothness_invert.operation = 'SUBTRACT'
-        link(rough_saturate.outputs[0], smoothness_invert.inputs[1])
-        smoothness_invert.inputs[0].default_value = 1
-        print("smoothness")
-        link(smoothness_invert.outputs[0], principled_node.inputs[9])
+            smoothness_invert = matnodes.new("ShaderNodeMath")
+            smoothness_invert.operation = 'SUBTRACT'
+            link(rough_saturate.outputs[0], smoothness_invert.inputs[1])
+            smoothness_invert.inputs[0].default_value = 1
+            print("smoothness")
+            link(smoothness_invert.outputs[0], principled_node.inputs[9])
 
-    if True:  # RT2
-        link(variable_dict['o2.x'], principled_node.inputs[6])
+        if True:  # RT2
+            link(variable_dict['o2.x'], principled_node.inputs[6])
 
-        emissive_subtract = matnodes.new("ShaderNodeMath")
-        emissive_subtract.operation = 'SUBTRACT'
-        link(variable_dict['o2.y'], emissive_subtract.inputs[1])
-        emissive_subtract.inputs[1].default_value = 0.5
+            emissive_subtract = matnodes.new("ShaderNodeMath")
+            emissive_subtract.operation = 'SUBTRACT'
+            link(variable_dict['o2.y'], emissive_subtract.inputs[1])
+            emissive_subtract.inputs[1].default_value = 0.5
 
-        emissive_multiply = matnodes.new("ShaderNodeMath")
-        emissive_multiply.operation = 'MULTIPLY'
-        link(emissive_subtract.outputs[0], emissive_multiply.inputs[0])
-        emissive_multiply.inputs[1].default_value = 10
+            emissive_multiply = matnodes.new("ShaderNodeMath")
+            emissive_multiply.operation = 'MULTIPLY'
+            link(emissive_subtract.outputs[0], emissive_multiply.inputs[0])
+            emissive_multiply.inputs[1].default_value = 10
 
-        emissive_scale = matnodes.new("ShaderNodeVectorMath")
-        emissive_scale.operation = 'SCALE'
-        link(variable_dict['output_rgb_albedo'], emissive_scale.inputs[0])
-        link(emissive_multiply.outputs[0], emissive_scale.inputs[1])
-        print("emissive")
-        link(emissive_scale.outputs[0], principled_node.inputs[19])
+            emissive_scale = matnodes.new("ShaderNodeVectorMath")
+            emissive_scale.operation = 'SCALE'
+            link(variable_dict['output_rgb_albedo'], emissive_scale.inputs[0])
+            link(emissive_multiply.outputs[0], emissive_scale.inputs[1])
+            print("emissive")
+            link(emissive_scale.outputs[0], principled_node.inputs[19])
 
-        # AO is ignored single blender does that on its own
+            # AO is ignored since blender does that on its own
 
 
 def setup_engine():
@@ -303,3 +303,7 @@ def start_import():
 
 if __name__ == "__main__":
     start_import()
+    if INPUT_shader_type == "VS":
+        import PS_<<<MAT_NAME>>> as ps
+        #TODO: Generate dict of output variables and provide as input to PS
+        #TODO: Run PS from VS
