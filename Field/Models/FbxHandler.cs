@@ -443,8 +443,6 @@ public class FbxHandler
             _scene.Destroy();
             _manager.Destroy();
         }
-        if(InfoHandler != null)
-            InfoHandler.Dispose();
     }
 
     public void AddStaticInstancesToScene(List<Part> parts, List<D2Class_406D8080> instances, string meshName)

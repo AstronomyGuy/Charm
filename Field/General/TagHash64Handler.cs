@@ -1,8 +1,5 @@
-﻿using System.Diagnostics;
-using System.Globalization;
+﻿using System.Globalization;
 using System.Runtime.InteropServices;
-using System.Xml;
-using Field;
 
 namespace Field.General;
 
