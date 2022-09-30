@@ -1,8 +1,6 @@
 ﻿using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
-using System.Text.Json;
-using System.Text.Json.Nodes;
 using Field.General;
 using Field.Textures;
 using Field.Utils;
@@ -30,10 +28,6 @@ public class Material : Tag {
         var matPath = $"{savePath}/Materials";
         Directory.CreateDirectory(matPath);
         SaveAllTextures(texturePath, Header.PSTextures, Header.VSTextures, Header.CSTextures);
-        if (!File.Exists($"{matPath}/{Hash}_meta.json")) {
-            try { File.WriteAllText($"{matPath}/{Hash}_meta.json", CreateTextureManifest().ToJsonString(new JsonSerializerOptions { WriteIndented = true })); }
-            catch(IOException ignored) { }
-        }
         if(settings.Raw) {
             var rawPath = $"{matPath}/Raw";
             Directory.CreateDirectory(rawPath);
@@ -128,62 +122,12 @@ public class Material : Tag {
         foreach(var textures in shaderTextures) {
             foreach (var e in textures.Where(e => e.Texture != null)) {
                 var path = $"{saveDirectory}/{e.Texture.Hash}";
-                if (!File.Exists(path + GetTextureExtension(TextureExtractor.Format)))
+                if (!File.Exists(path + GetTextureExtension()))
                     e.Texture.SavetoFile(path);
             }
         }
     }
 
-    #region Texture Manifest
-
-    private JsonObject CreateTextureManifest() {
-        var root = new JsonObject();
-        var textureMeta = new JsonObject();
-        if(Header.PixelShader != null) {
-            var i = CreateShaderIndices(Header.PSTextures);
-            if(i.Count > 0)
-                root["pixelShader"] = new JsonObject { ["indices"] = i };
-            GetShaderTextureMeta(textureMeta, Header.PSTextures);
-        }
-        if(Header.VertexShader != null) {
-            var i = CreateShaderIndices(Header.VSTextures);
-            if(i.Count > 0)
-                root["vertexShader"] = new JsonObject { ["indices"] = i };
-            GetShaderTextureMeta(textureMeta, Header.VSTextures);
-        }
-        if(Header.ComputeShader != null) {
-            var i = CreateShaderIndices(Header.CSTextures);
-            if(i.Count > 0)
-                root["computeShader"] = new JsonObject { ["indices"] = i };
-            GetShaderTextureMeta(textureMeta, Header.CSTextures);
-        }
-        root["textures"] = textureMeta;
-        root["format"] = GetTextureExtension(TextureExtractor.Format);
-        return root;
-    }
-    
-    private static void GetShaderTextureMeta(JsonObject table, List<D2Class_CF6D8080> textures) {
-        foreach(var e in textures) {
-            if(table.ContainsKey(e.Texture.Hash))
-                continue;
-            var meta = new JsonObject {
-                ["srgb"] = e.Texture.IsSrgb(),
-                ["volume"] = e.Texture.IsVolume(),
-                ["cubemap"] = e.Texture.IsCubemap()
-            };
-            table[e.Texture.Hash] = meta;
-        }
-    }
-    
-    private static JsonObject CreateShaderIndices(List<D2Class_CF6D8080> textures) {
-        var textureMeta = new JsonObject();
-        foreach(var e in textures)
-            textureMeta[e.TextureIndex.ToString()] = e.Texture.Hash.ToString();
-        return textureMeta;
-    }
-    
-    #endregion
-    
     #region Platform-specific exports
 
     private void ExportMaterialRaw(string path) {
@@ -263,7 +207,7 @@ public class Material : Tag {
             materialBuilder.AppendLine($"\n\tshader \"{GetShaderPrefix(ShaderType.Pixel)}_{Hash}.vfx\"");
             materialBuilder.AppendLine("\tF_ALPHA_TEST 1");
             foreach(var e in Header.PSTextures.Where(e => e.Texture != null))
-                materialBuilder.AppendLine($"\tTextureT{e.TextureIndex} \"materials/Textures/{e.Texture.Hash}{GetTextureExtension(TextureExtractor.Format)}\"");
+                materialBuilder.AppendLine($"\tTextureT{e.TextureIndex} \"materials/Textures/{e.Texture.Hash}{GetTextureExtension()}\"");
             materialBuilder.AppendLine("}");
             Directory.CreateDirectory($"{path}/materials");
             try { File.WriteAllText($"{path}/materials/{Hash}.vmat", materialBuilder.ToString()); }
@@ -275,8 +219,8 @@ public class Material : Tag {
 
     #region Utils
     
-    private static string GetTextureExtension(ETextureFormat format) {
-        return format switch {
+    public static string GetTextureExtension() {
+        return TextureExtractor.Format switch {
             ETextureFormat.PNG => ".png",
             ETextureFormat.TGA => ".tga",
             _ => ".dds"
@@ -299,9 +243,25 @@ public class Material : Tag {
         return path;
     }
 
-    private enum ShaderType { Pixel, Vertex, Compute }
+    public enum ShaderType { Pixel, Vertex, Compute }
     
     #endregion
+
+    public List<D2Class_CF6D8080> GetTextures(ShaderType type) {
+        return type switch {
+            Material.ShaderType.Pixel => Header.PSTextures,
+            Material.ShaderType.Vertex => Header.VSTextures,
+            _ => Header.CSTextures
+        };
+    }
+
+    public bool HasShaderType(ShaderType type) {
+        return type switch {
+            Material.ShaderType.Pixel => Header.PixelShader != null,
+            Material.ShaderType.Vertex => Header.VertexShader != null,
+            _ => Header.ComputeShader != null
+        };
+    }
 }
 
 #region Symmetry
