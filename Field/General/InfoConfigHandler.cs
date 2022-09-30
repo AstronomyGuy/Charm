@@ -91,7 +91,6 @@ public class InfoConfigHandler {
     
     public void WriteToFile(string path)
     {
-
         // If theres only 1 part, we need to rename it + the instance to the name of the mesh (unreal imports to fbx name if only 1 mesh inside)
         if (_config.ContainsKey("parts") && _config["parts"]!.AsObject().Count == 1) {
             var part = GetJsonObject(_config, "parts")[0];
