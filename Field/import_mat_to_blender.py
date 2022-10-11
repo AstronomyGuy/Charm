@@ -38,6 +38,37 @@ def get_tex_meta(tex_index):
     texname = get_tex_name(tex_index)
     return shader_metadata['textures'][texname]
 
+def create_cbuffer(cbuffer, name):
+    cgroup = bpy.data.node_groups.new(name, 'ShaderNodeTree')
+    link = cgroup.links.new
+    
+    group_in = cgroup.nodes.new('NodeGroupInput')
+    group_in.location = (-200,0)
+    cgroup.inputs.new('NodeSocketFloat','Index')
+    
+    group_out = cgroup.nodes.new('NodeGroupOutput')
+    group_out.location = (400,0)
+    cgroup.outputs.new('NodeSocketColor','Color')
+    cgroup.outputs.new('NodeSocketFloat','Alpha')
+    
+    divider = cgroup.nodes.new('ShaderNodeMath')
+    divider.operation = 'DIVIDE'
+    divider.location = (0,0)
+    link(group_in.outputs[0], divider.inputs[0])
+    
+    ramp = cgroup.nodes.new("ShaderNodeValToRGB")
+    ramp.interpolation = 'CONSTANT'
+    
+    for i in range(len(cbuffer)):
+        ramp.elements.new(i / len(cbuffer))
+        ramp.elements[i] = cbuffer[i]
+    
+    link(divider.outputs[0], ramp.inputs[0])
+    
+    link(ramp.outputs[0], group_out.inputs[0])
+    link(ramp.outputs[1], group_out.inputs[1])
+    
+    return cgroup
 
 def assemble_mat():
     material = bpy.data.materials.new(name=INPUT_mat_name)
@@ -63,6 +94,20 @@ def assemble_mat():
         # print(var_name)
         variable_dict[var_name] = varNode.outputs[0]
 
+    def add_dynamic_cbuffer(index_ref, cbuffer):
+        divider = matnodes.new('ShaderNodeMath')
+        divider.operation = 'DIVIDE'
+        divider.location = (0,0)
+        link(index_ref, divider.inputs[0])
+        
+        ramp = matnodes.new("ShaderNodeValToRGB")
+        ramp.interpolation = 'CONSTANT'
+        
+        for i in range(len(cbuffer)):
+            ramp.elements.new(i / len(cbuffer))
+            ramp.elements[i] = cbuffer[i]        
+        link(divider.outputs[0], ramp.inputs[0])
+        
     def add_float4(var_name, x, y, z, w):
         register_float(var_name + ".x", x)
         register_float(var_name + ".y", y)
@@ -83,78 +128,9 @@ def assemble_mat():
 
     principled_node = matnodes.get('Principled BSDF')
 
-    # Texture: ShaderNodeTexImage
-    # Color (4dim vector): ShaderNodeRGB
-    # Texture Coordinate: ShaderNodeTexCoord
-    # Math: ShaderNodeMath
-    # Clamp: ShaderNodeClamp
-    # Value: ShaderNodeValue
-    if True:
-        # using this to keep the variables here in their own scope
-        print("setting up v3")
-        texcoord = matnodes.new("ShaderNodeTexCoord")
-        texcoord.location = (-700, 180)
-        splitNode = matnodes.new("ShaderNodeSeparateXYZ")
-        splitNode.location = (-550, 205)
-        link(texcoord.outputs[2], splitNode.inputs[0])
-        variable_dict['v3.x'] = splitNode.outputs[0]
-        variable_dict['v3.y'] = splitNode.outputs[1]
-        variable_dict['v3.z'] = splitNode.outputs[0]
-        variable_dict['v3.w'] = splitNode.outputs[1]
-
-    if True:
-        print("setting up v0, v1, v2, v6")
-        geo = matnodes.new("ShaderNodeNewGeometry")
-        geo.location = (-700, -120)
-        splitpos = matnodes.new("ShaderNodeSeparateXYZ")
-        link(geo.outputs[0], splitpos.inputs[0])
-        variable_dict['v0.x'] = splitpos.outputs[0]
-        variable_dict['v0.y'] = splitpos.outputs[1]
-        variable_dict['v0.z'] = splitpos.outputs[2]
-        variable_dict['v0.w'] = splitpos.outputs[0]  # probably wrong
-
-        splitnorm = matnodes.new("ShaderNodeSeparateXYZ")
-        link(geo.outputs[1], splitpos.inputs[0])
-        variable_dict['v1.x'] = splitnorm.outputs[0]
-        variable_dict['v1.y'] = splitnorm.outputs[1]
-        variable_dict['v1.z'] = splitnorm.outputs[2]
-        variable_dict['v1.w'] = splitnorm.outputs[0]  # probably wrong
-
-        splittang = matnodes.new("ShaderNodeSeparateXYZ")
-        link(geo.outputs[2], splitpos.inputs[0])
-        variable_dict['v2.x'] = splittang.outputs[0]
-        variable_dict['v2.y'] = splittang.outputs[1]
-        variable_dict['v2.z'] = splittang.outputs[2]
-        variable_dict['v2.w'] = splittang.outputs[0]  # probably wrong
-
-        invback = matnodes.new("ShaderNodeMath")
-        invback.operation = 'SUBTRACT'
-        invback.inputs[0].default_value = 1
-        link(geo.outputs[6], invback.inputs[1])
-        variable_dict['v6.x'] = invback.outputs[0]
-        variable_dict['v6.y'] = invback.outputs[0]  # probably wrong
-        variable_dict['v6.z'] = invback.outputs[0]  # probably wrong
-        variable_dict['v6.w'] = invback.outputs[0]  # probably wrong
-
-    if True:
-        print("setting up v4, v5")
-        attribute = matnodes.new("ShaderNodeAttribute")
-        attribute.attribute_name = 'colourLayerName'
-
-        splitattr = matnodes.new("ShaderNodeSeparateXYZ")
-        link(attribute.outputs[1], splitattr.inputs[0])
-        variable_dict['v4.x'] = splitattr.outputs[0]
-        variable_dict['v4.y'] = splitattr.outputs[1]
-        variable_dict['v4.z'] = splitattr.outputs[2]
-        variable_dict['v4.w'] = splitattr.outputs[0]  # probably wrong
-
-        variable_dict['v5.x'] = attribute.outputs[3]  # probably wrong
-        variable_dict['v5.y'] = attribute.outputs[3]  # probably wrong
-        variable_dict['v5.z'] = attribute.outputs[3]  # probably wrong
-        variable_dict['v5.w'] = attribute.outputs[3]
-
     # <<<REPLACE WITH SCRIPT>>>
-    if INPUT_shader_type == "PS":
+    
+    if INPUT_shader_type == "pixelShader":
         if True:  # Base Color (Albedo)
             combineRGB = matnodes.new("ShaderNodeCombineColor")
             link(variable_dict['o0.x'], combineRGB.inputs[0])
@@ -303,7 +279,7 @@ def start_import():
 
 if __name__ == "__main__":
     start_import()
-    if INPUT_shader_type == "VS":
+    if INPUT_shader_type == "vertexShader":
         import PS_<<<MAT_NAME>>> as ps
         #TODO: Generate dict of output variables and provide as input to PS
         #TODO: Run PS from VS

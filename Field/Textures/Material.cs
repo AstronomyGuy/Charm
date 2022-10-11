@@ -158,15 +158,17 @@ public class Material : Tag {
         // TODO: Merge Vertex and Pixel Shaders if applicable
         // TODO: Create a proper import script, assuming textures are bound and loaded
         if(Header.PixelShader != null) {
-            var bpy = new NodeConverter().HlslToBpy(this, $"{path}/../..", Decompile(ShaderType.Pixel), false);
-            if(bpy != string.Empty) {
+            string bpy = new ASM_Parser(Disassemble(ShaderType.Vertex), this, false).ToNodeScript();
+            if (bpy != string.Empty) {
                 try { File.WriteAllText($"{path}/{GetShaderPrefix(ShaderType.Pixel)}_{Hash}.py", bpy); }
                 catch (IOException) { }
                 Console.WriteLine($"Exported Blender PixelShader {Hash}.");
             }
         }
         if(Header.VertexShader != null) {
-            var bpy = new NodeConverter().HlslToBpy(this, $"{path}/../..", Decompile(ShaderType.Vertex), true);
+            //(this, $"{path}/../..", Disassemble(ShaderType.Vertex), true);
+
+            string bpy = new ASM_Parser(Disassemble(ShaderType.Vertex), this, true).ToNodeScript();
             if(bpy != string.Empty) {
                 try { File.WriteAllText($"{path}/{GetShaderPrefix(ShaderType.Vertex)}_{Hash}.py", bpy); }
                 catch (IOException) { }

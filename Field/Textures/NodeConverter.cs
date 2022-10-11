@@ -104,7 +104,8 @@ public class NodeConverter {
         // Try to find matches, pixel shader has Unk2D0 Unk2E0 Unk2F0 Unk300 available
         foreach (var cbuffer in cbuffers) {
             bpy.AppendLine($"#static {cbuffer.Type} {cbuffer.Variable}[{cbuffer.Count}]").AppendLine();
-            
+            bpy.Append($"{cbuffer.Variable} = [");
+
             dynamic data = null;
             if (bIsVertexShader) {
                 if (cbuffer.Count == material.Header.Unk90.Count)
@@ -145,37 +146,40 @@ public class NodeConverter {
                 switch (cbuffer.Type) {
                     case "float4":
                         if (data == null) 
-                            bpy.AppendLine($"add_float4('{cbuffer.Variable}[{i}]', 0.0, 0.0, 0.0, 0.0)");
+                            bpy.Append($"(0.0, 0.0, 0.0, 0.0)");
                         else {
                             try {
                                 if (data[i] is Vector4)
-                                    bpy.AppendLine($"add_float4('{cbuffer.Variable}[{i}]', {data[i].X}, {data[i].Y}, {data[i].Z}, {data[i].W})");
+                                    bpy.Append($"({data[i].X}, {data[i].Y}, {data[i].Z}, {data[i].W})");
                                 else {
                                     var x = data[i].Unk00.X; // really bad but required
-                                    bpy.AppendLine($"add_float4('{cbuffer.Variable}[{i}]', {x}, {data[i].Unk00.Y}, {data[i].Unk00.Z}, {data[i].Unk00.W})");
+                                    bpy.Append($"({x}, {data[i].Unk00.Y}, {data[i].Unk00.Z}, {data[i].Unk00.W})");
                                 }
                             } catch (Exception e) { // figure out whats up here, taniks breaks it
-                                bpy.AppendLine($"add_float4('{cbuffer.Variable}[{i}]', 0.0, 0.0, 0.0, 0.0)");
+                                bpy.Append($"(0.0, 0.0, 0.0, 0.0)");
                             }
                         }
                         break;
                     case "float3":
                         if (data == null)
-                            bpy.AppendLine($"add_float3('{cbuffer.Variable}[{i}]', 0.0, 0.0, 0.0),");
+                            bpy.Append($"(0.0, 0.0, 0.0)");
                         else 
-                            bpy.AppendLine($"add_float3('{cbuffer.Variable}[{i}]', {data[i].Unk00.X}, {data[i].Unk00.Y}, {data[i].Unk00.Z}),");
+                            bpy.Append($"({data[i].Unk00.X}, {data[i].Unk00.Y}, {data[i].Unk00.Z})");
                         break;
                     case "float":
                         if (data == null)
-                            bpy.AppendLine($"add_float('{cbuffer.Variable}[{i}]', 0.0)");
+                            bpy.Append($"(0.0)");
                         else
-                            bpy.AppendLine($"add_float4('{cbuffer.Variable}[{i}]', {data[i].Unk00}, 0.0, 0.0, 0.0)");
+                            bpy.Append($"({data[i].Unk00}, 0.0, 0.0, 0.0)");
                         break;
                     default:
                         throw new NotImplementedException();
-                }  
+                }
+                if (i < cbuffer.Count - 1) {
+                    bpy.Append(", ");
+                }
             }
-            bpy.AppendLine("");
+            bpy.AppendLine("]");
         }
     }
     
