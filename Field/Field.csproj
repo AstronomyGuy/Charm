@@ -68,6 +68,9 @@
       <None Update="import_blender.py">
         <CopyToOutputDirectory>Always</CopyToOutputDirectory>
       </None>
+      <None Update="nodemappings.py">
+        <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      </None>
       <None Update="template.vmdl">
         <CopyToOutputDirectory>Always</CopyToOutputDirectory>
       </None>
