@@ -10,11 +10,12 @@ namespace Field.General;
 
 public class InfoConfigHandler {
     
-    private readonly JsonObject _config = new();
-
+    private readonly JsonObject _config = new JsonObject();
+    private static List<TagHash> existingHashes = new List<TagHash>();
     public void AddMaterial(Material material) {
-        if(!material.Hash.IsValid())
+        if(!material.Hash.IsValid() && !existingHashes.Contains(material.Hash))
             return;
+        existingHashes.Add(material.Hash);
 
         var materialNode = new JsonObject();
         var shaderInfoTable = new JsonObject();
@@ -137,9 +138,9 @@ public class InfoConfigHandler {
     }
     
     private void WriteTextureMeta(List<D2Class_CF6D8080> textures) {
-        var rootNode = GetJsonObject(_config, "textures");
-        foreach(var e in textures) {
-            if(rootNode.ContainsKey(e.Texture.Hash))
+        var rootNode = GetJsonObject(_config, "textures")?? new JsonObject();
+        foreach (var e in textures) {
+            if (ContainsKey(rootNode, e.Texture.Hash))
                 continue;
             var meta = new JsonObject {
                 ["srgb"] = e.Texture.IsSrgb(),
@@ -168,10 +169,23 @@ public class InfoConfigHandler {
     private static JsonObject GetJsonObject(JsonObject root, params dynamic[] keys) {
         var current = root;
         foreach (var key in keys) {
-            if (!current.ContainsKey(key))
+            if (!ContainsKey(current, key))
                 current[key] = new JsonObject();
             current = current[key];
         }
         return current;
+    }
+    private static bool ContainsKey(JsonObject json, string key)
+    {
+        //Have to do this stupid stuff because the Json object is a dictionary and apparently it's being modified concurrently by *something*
+        try
+        {
+            var temp = json[key];
+        }
+        catch (KeyNotFoundException)
+        {
+            return false;
+        }
+        return true;
     }
 }
