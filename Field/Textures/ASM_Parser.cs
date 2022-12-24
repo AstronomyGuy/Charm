@@ -420,8 +420,8 @@ namespace Field.Textures
             return;
         }
         private static string formatMap(Operation operation, string id, int dim, ref string headerRef) {
-            if (id.Contains("38")) {
-                Console.WriteLine("53!");
+            if (operation.operation == "while" || operation.operation == "for" || operation.operation == "loop" || operation.operation == "do") {
+                Console.WriteLine($"Loop!");
             }            
             Dictionary<char, int> dimMap = new Dictionary<char, int>() { { 'x', 0 }, { 'y', 1 }, { 'z', 2 }, { 'w', 3 }, { 'r', 0 }, { 'g', 1 }, { 'b', 2 }, { 'a', 3 } };
             string header = headerRef;
@@ -455,9 +455,9 @@ namespace Field.Textures
             }
             else {
                 Console.WriteLine($"Don't know operation {operation.operation + "\r"}");
-                return $"#UNKNOWN OPERATION {operation.ToString()}";
+                return $"#UNKNOWN OPERATION {operation}";
             }
-            nodes = $"#DIM {dim} OF {operation.ToString()}\n" + nodes;
+            nodes = $"#DIM {dim} OF {operation}\n" + nodes;
             nodes = nodes.Replace("§name", $"{id}_{dim}");
             nodes = nodes.Replace("§var", $"variable_dict['{operation.targetVar.Split(".")[0]}.{operation.targetVar.Split(".")[1][dim]}']");                  
             
@@ -501,7 +501,7 @@ namespace Field.Textures
                         if (isOperation1D(operation.operation, i))
                         {
                             int nthDim = p[1].Trim() == "" ? ldim : dimMap[p[1][ldim]];
-                            return $"basic_val({floats[nthDim]})";
+                            return $"basic_val({floats[nthDim % floats.Length]})";
                         }
                         else
                         {
