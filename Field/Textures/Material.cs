@@ -1,6 +1,7 @@
 ﻿using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Text.Json.Nodes;
 using Field.Entities;
 using Field.General;
 using Field.Utils;
@@ -55,7 +56,7 @@ public class Material : Tag
 
     private byte[] GetBytecode(ShaderType type) {
         var path = GetTempPath(type);
-        lock (Lock) {
+        lock (_lock) {
             if (!File.Exists(path)) {
                 var bytecode = type switch {
                     ShaderType.Pixel => Header.PixelShader.GetBytecode(),
@@ -87,6 +88,13 @@ public class Material : Tag
     //     out int pHlslTextLength
     // );
 
+    /// <summary>
+    /// This function exists because I didn't want to adjust all 8 ocurrences of Decompile being called with a ShaderType
+    /// </summary>
+    private string Decompile(ShaderType shader)
+    {        
+        return Decompile(GetBytecode(shader), GetShaderPrefix(shader).ToLower());
+    }
     public string Decompile(byte[] shaderBytecode, string? type = "ps")
     {
         // tried doing it via dll pinvoke but seemed to cause way too many problems so doing it via exe instead
@@ -306,7 +314,7 @@ public class Material : Tag
             GetShaderTextureMeta(textureMeta, Header.CSTextures);
         }
         root["textures"] = textureMeta;
-        root["format"] = GetTextureExtension(TextureExtractor.Format);
+        root["format"] = TextureExtractor.GetExtension();
         return root;
     }
     
@@ -359,23 +367,24 @@ public class Material : Tag
     }
 
     private void ExportMaterialBlender(string path) {
-        // TODO: Merge Vertex and Pixel Shaders if applicable
-        // TODO: Create a proper import script, assuming textures are bound and loaded
+
+        //TODO: The whole thing
+
         if(Header.PixelShader != null) {
-            var bpy = new NodeConverter().HlslToBpy(this, $"{path}/../..", Decompile(ShaderType.Pixel), false);
-            if(bpy != string.Empty) {
-                try { File.WriteAllText($"{path}/{GetShaderPrefix(ShaderType.Pixel)}_{Hash}.py", bpy); }
-                catch (IOException) { }
-                Console.WriteLine($"Exported Blender PixelShader {Hash}.");
-            }
+            //var bpy = new NodeConverter().HlslToBpy(this, $"{path}/../..", Decompile(ShaderType.Pixel), false);
+            //if(bpy != string.Empty) {
+            //    try { File.WriteAllText($"{path}/{GetShaderPrefix(ShaderType.Pixel)}_{Hash}.py", bpy); }
+            //    catch (IOException) { }
+            //    Console.WriteLine($"Exported Blender PixelShader {Hash}.");
+            //}
         }
         if(Header.VertexShader != null) {
-            var bpy = new NodeConverter().HlslToBpy(this, $"{path}/../..", Decompile(ShaderType.Vertex), true);
-            if(bpy != string.Empty) {
-                try { File.WriteAllText($"{path}/{GetShaderPrefix(ShaderType.Vertex)}_{Hash}.py", bpy); }
-                catch (IOException) { }
-                Console.WriteLine($"Exported Blender VertexShader {Hash}.");
-            }
+            //var bpy = new NodeConverter().HlslToBpy(this, $"{path}/../..", Decompile(ShaderType.Vertex), true);
+            //if(bpy != string.Empty) {
+            //    try { File.WriteAllText($"{path}/{GetShaderPrefix(ShaderType.Vertex)}_{Hash}.py", bpy); }
+            //    catch (IOException) { }
+            //    Console.WriteLine($"Exported Blender VertexShader {Hash}.");
+            //}
         }
         // I don't think Blender can even handle compute shaders, so I'll leave that out. If it can, it's the same as above.
     }
@@ -411,7 +420,7 @@ public class Material : Tag
             materialBuilder.AppendLine($"\n\tshader \"{GetShaderPrefix(ShaderType.Pixel)}_{Hash}.vfx\"");
             materialBuilder.AppendLine("\tF_ALPHA_TEST 1");
             foreach(var e in Header.PSTextures.Where(e => e.Texture != null))
-                materialBuilder.AppendLine($"\tTextureT{e.TextureIndex} \"materials/Textures/{e.Texture.Hash}{GetTextureExtension(TextureExtractor.Format)}\"");
+                materialBuilder.AppendLine($"\tTextureT{e.TextureIndex} \"materials/Textures/{e.Texture.Hash}{TextureExtractor.GetExtension()}\"");
             materialBuilder.AppendLine("}");
             Directory.CreateDirectory($"{path}/materials");
             try { File.WriteAllText($"{path}/materials/{Hash}.vmat", materialBuilder.ToString()); }

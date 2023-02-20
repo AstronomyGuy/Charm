@@ -46,7 +46,6 @@ public class TextureExtractor
         scratchImage.Dispose();
         return true;
     }
-
     public static string GetExtension(ETextureFormat format)
     {
         switch (format)
@@ -62,6 +61,10 @@ public class TextureExtractor
         }
 
         return String.Empty;
+    }
+    public static string GetExtension()
+    {
+        return GetExtension(_format);
     }
 }
 
