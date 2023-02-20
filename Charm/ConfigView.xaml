@@ -17,6 +17,9 @@
             <TabItem Header="UNREAL ENGINE" x:Name="UnrealTab">
                 <local:UnrealConfigView x:Name="UnrealControl"/>
             </TabItem>
+            <TabItem Header="BLENDER" x:Name="BlenderTab">
+                <local:BlenderConfigView x:Name="BlenderControl"/>
+            </TabItem>
             
         </TabControl>
     </Grid>
