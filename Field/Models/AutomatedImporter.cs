@@ -52,7 +52,7 @@ public class AutomatedImporter
         //Not gonna delete just in case
 
         // change extension
-        string textExtensions = File.ReadAllText($"{saveDirectory}/{meshName}_import_to_blender.py");
+        string textExtensions = File.ReadAllText($"import_to_blender.py");
         switch (textureFormat)
         {
             case ETextureFormat.PNG:
@@ -67,11 +67,12 @@ public class AutomatedImporter
         }
         File.WriteAllText($"{saveDirectory}/{meshName}_import_to_blender.py", textExtensions);
 
-        var betterScriptPath = $"{saveDirectory}/{meshName}_import_blender.py";
-        File.Copy("import_blender.py", betterScriptPath, true);
-        var betterScript = File.ReadAllText(betterScriptPath);
-        betterScript = betterScript.Replace("<<REPLACE_HASH>>", $"{meshName}");
-        File.WriteAllText(betterScriptPath, betterScript);
+        /// Broken because "import_blender.py" isn't imported
+        //var betterScriptPath = $"{saveDirectory}/{meshName}_import_blender.py";
+        //File.Copy("import_blender.py", betterScriptPath, true);
+        //var betterScript = File.ReadAllText(betterScriptPath);
+        //betterScript = betterScript.Replace("<<REPLACE_HASH>>", $"{meshName}");
+        //File.WriteAllText(betterScriptPath, betterScript);
     }
 
     
