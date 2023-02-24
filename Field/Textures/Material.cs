@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json.Nodes;
@@ -172,8 +173,15 @@ public class Material : Tag
     
     public void SavePixelShader(string saveDirectory, bool isTerrain = false)
     {
+        Directory.CreateDirectory($"{saveDirectory}");
+        Directory.CreateDirectory($"{saveDirectory}/Raw");
         if (Header.PixelShader != null)
         {
+            try { File.WriteAllText($"{saveDirectory}/Raw/{GetShaderPrefix(ShaderType.Pixel)}_{Hash}.asm", Disassemble(ShaderType.Pixel)); }
+            catch (IOException) { }
+            try { File.WriteAllText($"{saveDirectory}/Raw/{GetShaderPrefix(ShaderType.Pixel)}_{Hash}.hlsl", Decompile(ShaderType.Pixel)); }
+            catch (IOException) { }
+
             string hlsl = Decompile(Header.PixelShader.GetBytecode());
             string usf = new UsfConverter().HlslToUsf(this, hlsl, false);
             string vfx = new VfxConverter().HlslToVfx(this, hlsl, false, isTerrain);
@@ -252,8 +260,14 @@ public class Material : Tag
     public void SaveVertexShader(string saveDirectory)
     {
         Directory.CreateDirectory($"{saveDirectory}");
+        Directory.CreateDirectory($"{saveDirectory}/Raw");
         if (Header.VertexShader != null && !File.Exists($"{saveDirectory}/VS_{Hash}.usf"))
         {
+            try { File.WriteAllText($"{saveDirectory}/Raw/{GetShaderPrefix(ShaderType.Vertex)}_{Hash}.asm", Disassemble(ShaderType.Pixel)); }
+            catch (IOException) { }
+            try { File.WriteAllText($"{saveDirectory}/Raw/{GetShaderPrefix(ShaderType.Vertex)}_{Hash}.hlsl", Decompile(ShaderType.Pixel)); }
+            catch (IOException) { }
+
             string hlsl = Decompile(Header.VertexShader.GetBytecode(), "vs");
             string usf = new UsfConverter().HlslToUsf(this, hlsl, true);
             if (usf != String.Empty)
@@ -273,8 +287,14 @@ public class Material : Tag
     public void SaveComputeShader(string saveDirectory)
     {
         Directory.CreateDirectory($"{saveDirectory}");
+        Directory.CreateDirectory($"{saveDirectory}/Raw");
         if (Header.ComputeShader != null && !File.Exists($"{saveDirectory}/CS_{Hash}.usf"))
         {
+            try { File.WriteAllText($"{saveDirectory}/Raw/{GetShaderPrefix(ShaderType.Compute)}_{Hash}.asm", Disassemble(ShaderType.Pixel)); }
+            catch (IOException) { }
+            try { File.WriteAllText($"{saveDirectory}/Raw/{GetShaderPrefix(ShaderType.Compute)}_{Hash}.hlsl", Decompile(ShaderType.Pixel)); }
+            catch (IOException) { }
+
             string hlsl = Decompile(Header.ComputeShader.GetBytecode(), "cs");
             string usf = new UsfConverter().HlslToUsf(this, hlsl, false);
             if (usf != String.Empty)
