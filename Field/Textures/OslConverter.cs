@@ -328,21 +328,21 @@ public class OslConverter
         {
             foreach (var i in inputs)
             {
-                if (i.Type == "float4")
+                if (i.Type == "RGBA")
                 {
                     osl.AppendLine($"static {i.Type} {i.Variable} = " + "{1, 1, 1, 1};\n");
                 }
-                else if (i.Type == "float3")
+                else if (i.Type == "vector")
                 {
                     osl.AppendLine($"static {i.Type} {i.Variable} = " + "{1, 1, 1};\n");
                 }
-                else if (i.Type == "uint")
+                else if (i.Type == "int")
                 {
                     osl.AppendLine($"static {i.Type} {i.Variable} = " + "1;\n");
                 }
             }
         }
-        osl.AppendLine("#define cmp -").AppendLine("struct shader {");
+        osl.AppendLine("#define cmp -");
         if (bIsVertexShader)
         {
             foreach (var output in outputs)
@@ -350,7 +350,7 @@ public class OslConverter
                 osl.AppendLine($"{output.Type} {output.Variable};");
             }
 
-            osl.AppendLine().AppendLine("void main(");
+            osl.AppendLine().AppendLine("shader main(");
             foreach (var texture in textures)
             {
                 osl.AppendLine($"   {texture.Type} {texture.Variable},");
@@ -369,28 +369,28 @@ public class OslConverter
         }
         else
         {
-            osl.AppendLine("FMaterialAttributes main(");
+            osl.AppendLine("shader main(");
             foreach (var texture in textures)
             {
                 osl.AppendLine($"   {texture.Type} {texture.Variable},");
             }
 
-            osl.AppendLine($"   float2 tx)");
+            osl.AppendLine($"   DUAL tx)");
 
-            osl.AppendLine("{").AppendLine("    FMaterialAttributes output;");
+            osl.AppendLine("{").AppendLine("    shader output;");
             // Output render targets, todo support vertex shader
-            osl.AppendLine("    float4 o0,o1,o2;");
+            osl.AppendLine("    RGBA o0,o1,o2;");
             foreach (var i in inputs)
             {
-                if (i.Type == "float4")
+                if (i.Type == "RGBA")
                 {
-                    osl.AppendLine($"    {i.Variable}.xyzw = {i.Variable}.xyzw * tx.xyxy;");
+                    osl.AppendLine($"    {i.Variable}.rgb.x = {i.Variable}.rgb.x * tx.x;\n    {i.Variable}.rgb.y = {i.Variable}.rgb.y * tx.y;\n    {i.Variable}.rgb.z = {i.Variable}.rgb.z * tx.x;\n    {i.Variable}.w = {i.Variable}.w * tx.y;\n");
                 }
-                else if (i.Type == "float3")
+                else if (i.Type == "vector")
                 {
-                    osl.AppendLine($"    {i.Variable}.xyz = {i.Variable}.xyz * tx.xyx;");
+                    osl.AppendLine($"    {i.Variable}.rgb.x = {i.Variable}.rgb.x * tx.x;\n    {i.Variable}.rgb.y = {i.Variable}.rgb.y * tx.y;\n    {i.Variable}.rgb.z = {i.Variable}.rgb.z * tx.x;\n");
                 }
-                else if (i.Type == "uint")
+                else if (i.Type == "int")
                 {
                     osl.AppendLine($"    {i.Variable}.x = {i.Variable}.x * tx.x;");
                 }
