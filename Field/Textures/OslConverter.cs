@@ -330,11 +330,11 @@ public class OslConverter
             {
                 if (i.Type == "RGBA")
                 {
-                    osl.AppendLine($"static {i.Type} {i.Variable} = " + "{1, 1, 1, 1};\n");
+                    osl.AppendLine($"static {i.Type} {i.Variable} = " + "{color(1, 1, 1), 1};\n");
                 }
                 else if (i.Type == "vector")
                 {
-                    osl.AppendLine($"static {i.Type} {i.Variable} = " + "{1, 1, 1};\n");
+                    osl.AppendLine($"static {i.Type} {i.Variable} = " + "vector(1, 1, 1);\n");
                 }
                 else if (i.Type == "int")
                 {
@@ -392,9 +392,9 @@ public class OslConverter
                 }
                 else if (i.Type == "int")
                 {
-                    osl.AppendLine($"    {i.Variable}.x = {i.Variable}.x * tx.x;");
+                    osl.AppendLine($"    {i.Variable} = {i.Variable} * tx.x;");
                 }
-                osl.Replace("v0.xyzw = v0.xyzw * tx.xyxy;", "v0.xyzw = v0.xyzw;");
+                osl.Replace("v0.xyzw = v0.xyzw * tx.xyxy;", "");
             }
         }
     }

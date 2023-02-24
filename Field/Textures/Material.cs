@@ -185,8 +185,10 @@ public class Material : Tag
             string hlsl = Decompile(Header.PixelShader.GetBytecode());
             string usf = new UsfConverter().HlslToUsf(this, hlsl, false);
             string vfx = new VfxConverter().HlslToVfx(this, hlsl, false, isTerrain);
-            
+            string osl = new OslConverter().HlslToOsl(this, hlsl, false);
+
             Directory.CreateDirectory($"{saveDirectory}/Source2");
+            Directory.CreateDirectory($"{saveDirectory}/Blender");
             Directory.CreateDirectory($"{saveDirectory}/Source2/materials");
             StringBuilder vmat = new StringBuilder();
             if (usf != String.Empty || vfx != String.Empty)
@@ -201,7 +203,10 @@ public class Material : Tag
                     {
                         File.WriteAllText($"{saveDirectory}/Source2/PS_{Hash}.shader", vfx);
                     }
-
+                    if (!File.Exists($"{saveDirectory}/Blender/PS_{Hash}.osl"))
+                    {
+                        File.WriteAllText($"{saveDirectory}/Blender/PS_{Hash}.osl", osl);
+                    }
                     Console.WriteLine($"Saved pixel shader {Hash}");
                 }
                 catch (IOException)  // threading error
@@ -261,6 +266,7 @@ public class Material : Tag
     {
         Directory.CreateDirectory($"{saveDirectory}");
         Directory.CreateDirectory($"{saveDirectory}/Raw");
+        Directory.CreateDirectory($"{saveDirectory}/Blender");
         if (Header.VertexShader != null && !File.Exists($"{saveDirectory}/VS_{Hash}.usf"))
         {
             try { File.WriteAllText($"{saveDirectory}/Raw/{GetShaderPrefix(ShaderType.Vertex)}_{Hash}.asm", Disassemble(ShaderType.Pixel)); }
@@ -270,11 +276,13 @@ public class Material : Tag
 
             string hlsl = Decompile(Header.VertexShader.GetBytecode(), "vs");
             string usf = new UsfConverter().HlslToUsf(this, hlsl, true);
+            string osl = new OslConverter().HlslToOsl(this, hlsl, true);
             if (usf != String.Empty)
             {
                 try
                 {
                     File.WriteAllText($"{saveDirectory}/VS_{Hash}.usf", usf);
+                    File.WriteAllText($"{saveDirectory}/Blender/VS_{Hash}.osl", osl);
                     Console.WriteLine($"Saved vertex shader {Hash}");
                 }
                 catch (IOException)  // threading error
@@ -288,6 +296,7 @@ public class Material : Tag
     {
         Directory.CreateDirectory($"{saveDirectory}");
         Directory.CreateDirectory($"{saveDirectory}/Raw");
+        Directory.CreateDirectory($"{saveDirectory}/Blender");
         if (Header.ComputeShader != null && !File.Exists($"{saveDirectory}/CS_{Hash}.usf"))
         {
             try { File.WriteAllText($"{saveDirectory}/Raw/{GetShaderPrefix(ShaderType.Compute)}_{Hash}.asm", Disassemble(ShaderType.Pixel)); }
@@ -297,11 +306,13 @@ public class Material : Tag
 
             string hlsl = Decompile(Header.ComputeShader.GetBytecode(), "cs");
             string usf = new UsfConverter().HlslToUsf(this, hlsl, false);
+            string osl = new OslConverter().HlslToOsl(this, hlsl, false);
             if (usf != String.Empty)
             {
                 try
                 {
                     File.WriteAllText($"{saveDirectory}/CS_{Hash}.usf", usf);
+                    File.WriteAllText($"{saveDirectory}/Blender/CS_{Hash}.osl", osl);
                     Console.WriteLine($"Saved compute shader {Hash}");
                 }
                 catch (IOException)  // threading error
