@@ -438,7 +438,7 @@ public class OslConverter
     private string[] splitVariable(string variable)
     {
         //TODO: Reorder vector by components if they exist
-        if (Regex.IsMatch(variable, "\\{([0-9\\.]+), ([0-9\\.]+), ([0-9\\.]+), ([0-9\\.]+)\\}"))
+        if (Regex.IsMatch(variable, "\\{([0-9\\.]+), ?([0-9\\.]+), ?([0-9\\.]+), ?([0-9\\.]+)\\}"))
         {
             Match match = Regex.Match(variable, "\\{([0-9\\.]+), ([0-9\\.]+), ([0-9\\.]+), ([0-9\\.]+)\\}");
             return new string[] { match.Groups[1].Value, match.Groups[2].Value, match.Groups[3].Value, match.Groups[4].Value };
@@ -477,9 +477,40 @@ public class OslConverter
             }
             return result.ToArray();
         }
-    }    
+    }
+    private string solveIndex(string line, int i)
+    {
 
-    private bool ConvertInstructions()
+        string body = line;
+
+        string query = "(?:\\{([0-9\\.]+), ([0-9\\.]+), ([0-9\\.]+), ([0-9\\.]+)\\}|(vector)\\(([0-9\\.]+), ?([0-9\\.]+), ?([0-9\\.]+)\\))\\.([xyzwrgba]{0,4})";
+
+        Match dim4 = Regex.Match(body, query);
+        while (dim4.Success)
+        {
+            int index = dim4.Groups[9].Value[i % dim4.Groups[9].Length] switch
+            {
+                'x' => 1,
+                'y' => 2,
+                'z' => 3,
+                'w' => 4,
+                'r' => 1,
+                'g' => 2,
+                'b' => 3,
+                'a' => 4
+            };
+            if (dim4.Groups[5].Length > 0) { index += 5; }
+
+            string replacement = dim4.Groups[index].Value;
+            body = body.Remove(dim4.Index, dim4.Length);
+            body = body.Insert(dim4.Index, replacement);
+
+            dim4 = Regex.Match(body, query);
+        }
+
+        return body;
+    }
+        private bool ConvertInstructions()
     {
         Dictionary<int, Texture> texDict = new Dictionary<int, Texture>();
         foreach (var texture in textures)
@@ -563,7 +594,7 @@ public class OslConverter
                         {
                             //Match func = Regex.Match(line, "([A-Za-z_][A-Za-z_0-9\\.]*)\\((.*)\\)\\.?([xyzwrgba]{0,4})");
                             string method = func.Groups[1].Value.ToLower().Trim();
-                            string[] mparams = func.Groups[2].Value.Split(',').Select(s => s.Trim()).ToArray();
+                            string[] mparams = splitParams(func.Groups[2].Value).Select(s => s.Trim()).ToArray();
 
                             if (method == "texture" || Regex.IsMatch(method, "t\\d+.sample")) //tX.Sample gets replaced by texture in pre-processing
                             {
@@ -575,9 +606,6 @@ public class OslConverter
                                 /// This requires a dummy variable to dump the alpha value into and a bunch of other special handling
                                 ///  - OSL Specification pg.66
                                 ///  Example: https://github.com/AcademySoftwareFoundation/OpenShadingLanguage/blob/main/testsuite/texture-alpha/test.osl
-                                if (func.Groups[2].Value.Contains('w') || func.Groups[2].Value.Contains('a')) {
-                                    Console.WriteLine(" - ALPHA IN TEXTURE CALL");
-                                }
 
                                 if (split.Length == 2)
                                 {
@@ -689,15 +717,21 @@ public class OslConverter
 
                         MatchCollection vars = Regex.Matches(eq_sides[1], "([A-Za-z_][A-Za-z_0-9\\[\\]]+)\\.([xyzwrgba]{0,4})");
 
-                        //osl.AppendLine($"\t// {line}");
+                        osl.AppendLine($"\t// {line}");
 
                         //Getting a value from Regex groups is expensive, so we reduce calls as much as possible
                         string base_components = set_var.Groups[2].Value;
                         string line_starter = $"{set_var.Groups[1]}.";
 
                         for (int i = 0; i < base_components.Length; i++)
-                        {                            
+                        {
                             string new_line = line_starter + $"{base_components[i]} = {placeholder}";
+
+                            if (new_line.Contains("vector") || (new_line.Contains("{") && new_line.Contains("}")))
+                            {                                
+                                new_line = solveIndex(new_line, i);
+                            }
+
                             int placeholder_index = new_line.IndexOf('§');
                             int placeholders_iter = 0;
 
@@ -707,6 +741,7 @@ public class OslConverter
                                 //Variable Handler
                                 Match current_var = vars[placeholders_iter];
                                 string components = current_var.Groups[2].Value;
+                                string body = current_var.Groups[1].Value;
 
                                 new_line = new_line.Remove(placeholder_index, 1);
                                 new_line = new_line.Insert(placeholder_index, $"{current_var.Groups[1].Value}.{componentConversion[components[i % components.Length]]}");
@@ -723,32 +758,27 @@ public class OslConverter
                                 //Variable Handler
                                 Tuple<string, string> current_func = funcList[placeholders_iter];
                                 string components = current_func.Item2;
-                                string body = current_func.Item1;
-
-                                Match dim4 = Regex.Match(body, $"\\{{([0-9\\.]+), ([0-9\\.]+), ([0-9\\.]+), ([0-9\\.]+)\\}}\\.([xyzwrgba]{{1, 4}})");
-                                while (dim4.Success)
-                                {
-                                    int index = dim4.Groups[5].Value[i % dim4.Groups[5].Length] switch {
-                                        'x' => 1,
-                                        'y' => 2,
-                                        'z' => 3,
-                                        'w' => 4,
-                                        'r' => 1,
-                                        'g' => 2,
-                                        'b' => 3,
-                                        'a' => 4
-                                    };
-                                    string replacement = $"{{{dim4.Groups[index]}}}";
-                                    dim4 = Regex.Match(body, $"\\{{([0-9\\.]+), ([0-9\\.]+), ([0-9\\.]+), ([0-9\\.]+)\\}}\\.[xyzwrgba]{{{i}}}([xyzwrgba])");
-                                }
-                                
-                                body = Regex.Replace(body, $@"(vector\([0-9\.]+, ?[0-9\.]+, ?[0-9\.]+\)\.)[xyzwrgba]{{{i}}}([xyzwrgba])", "$1$2");
+                                string body = current_func.Item1;                                
 
                                 new_line = new_line.Remove(placeholder_index, 1);
                                 if (components.Length > 0)
                                 {
-                                    Dictionary<char, string> converter = body.Contains("texture") ? componentConversionColor : componentConversion;
-                                    new_line = new_line.Insert(placeholder_index, $"{body}.{converter[components[i % components.Length]]}");
+                                    if (body.Contains("texture")) {
+                                        string component = componentConversionColor[components[i % components.Length]];
+                                        if (component == "a")
+                                        {
+                                            //Alpha channel weirdness
+                                            new_line = $"{body.Substring(0, body.Length-1)}, \"alpha\", {line_starter}{base_components[i]});";
+                                        }
+                                        else
+                                        {
+                                            new_line = new_line.Insert(placeholder_index, $"{body}.{component}");
+                                        }
+                                    }
+                                    else
+                                    {
+                                        new_line = new_line.Insert(placeholder_index, $"{body}.{componentConversion[components[i % components.Length]]}");
+                                    }
                                 }
                                 else
                                 {
@@ -791,6 +821,30 @@ public class OslConverter
         } while (line != null);
 
         return true;
+    }
+
+    private static string[] splitParams(string ParamString, string splitBy = ",")
+    {
+        string[] Params = ParamString.Split(splitBy);
+        int paraCount = 0;
+        List<string> output = new List<string>();
+        string temp = "";
+        foreach (string param in Params)
+        {
+            paraCount += param.Count(c => "({[\"".Contains(c)) - param.Count(c => ")}]\"".Contains(c));
+            if (paraCount == 0)
+            {
+                temp += param;
+                output.Add(temp);
+                temp = "";
+            }
+            else
+            {
+                //Parantheses unbalanced
+                temp += param + splitBy;
+            }
+        }
+        return output.ToArray();
     }
 
     private void AddOutputs()
