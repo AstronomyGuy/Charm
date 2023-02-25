@@ -31,8 +31,8 @@ public class OslConverter
         }
         // WriteTextureComments(material, bIsVertexShader);
         WriteStructs();
-        WriteCbuffers(material, bIsVertexShader);
-        WriteFunctionDefinition(bIsVertexShader);
+        //WriteCbuffers(material, bIsVertexShader); Done during function definition
+        WriteFunctionDefinition(bIsVertexShader, material);
         hlsl = new StringReader(hlslText);
         bool success = ConvertInstructions();
         if (!success)
@@ -203,9 +203,9 @@ public class OslConverter
         foreach (var cbuffer in cbuffers)
         {
             if(bIsVertexShader)
-                osl.AppendLine($"static {cbuffer.Type} {cbuffer.Variable}[{cbuffer.Count}] = ").AppendLine("{");
+                osl.AppendLine($"\t {cbuffer.Type} {cbuffer.Variable}[{cbuffer.Count}] = ").AppendLine("\t{");
             else
-                osl.AppendLine($"static {cbuffer.Type} {cbuffer.Variable}[{cbuffer.Count}] = ").AppendLine("{");
+                osl.AppendLine($"\t {cbuffer.Type} {cbuffer.Variable}[{cbuffer.Count}] = ").AppendLine("\t{");
             
             dynamic data = null;
             if (bIsVertexShader)
@@ -299,14 +299,14 @@ public class OslConverter
                         {
                             if (data == null)
                             {
-                                 osl.AppendLine($"    {GetDefaultValue("RGBA")},");
+                                 osl.AppendLine($"\t    {GetDefaultValue("RGBA")},");
                             }
                             break;        
                         }
                         
                         if (data == null)
                         {
-                            osl.AppendLine($"    {GetDefaultValue("RGBA")},");
+                            osl.AppendLine($"\t    {GetDefaultValue("RGBA")},");
                         }
                         else
                         {
@@ -314,22 +314,22 @@ public class OslConverter
                             {
                                 if (data[i] is Vector4)
                                 {
-                                    osl.AppendLine($"    {{vector({data[i].X}, {data[i].Y}, {data[i].Z}), {data[i].W}}},");
+                                    osl.AppendLine($"\t    {{vector({data[i].X}, {data[i].Y}, {data[i].Z}), {data[i].W}}},");
                                 }
                                 else
                                 {
                                     var x = data[i].Unk00.X; // really bad but required
-                                    osl.AppendLine($"    {{vector({x}, {data[i].Unk00.Y}, {data[i].Unk00.Z}), {data[i].Unk00.W}}},");
+                                    osl.AppendLine($"\t    {{vector({x}, {data[i].Unk00.Y}, {data[i].Unk00.Z}), {data[i].Unk00.W}}},");
                                 }
                             }
                             catch (Exception e)  // figure out whats up here, taniks breaks it
                             {
                                 if(bIsVertexShader)
                                 {
-                                    osl.AppendLine($"    {GetDefaultValue("RGBA")},");
+                                    osl.AppendLine($"\t    {GetDefaultValue("RGBA")},");
                                 }
                                 else
-                                    osl.AppendLine($"    {GetDefaultValue("RGBA")},");
+                                    osl.AppendLine($"\t    {GetDefaultValue("RGBA")},");
                             }
                         }
                         break;
@@ -338,80 +338,62 @@ public class OslConverter
                         {
                             if (data == null)
                             {
-                                 osl.AppendLine("    vector(1.0, 1.0, 1.0),");
+                                 osl.AppendLine("\t    vector(1.0, 1.0, 1.0),");
                             }
                             break;        
                         }
                         if (data == null) osl.AppendLine("    vector(0.0, 0.0, 0.0),");
-                        else osl.AppendLine($"    vector({data[i].Unk00.X}, {data[i].Unk00.Y}, {data[i].Unk00.Z}),");
+                        else osl.AppendLine($"\t    vector({data[i].Unk00.X}, {data[i].Unk00.Y}, {data[i].Unk00.Z}),");
                         break;
                     case "float":
                         if(bIsVertexShader)
                         {
                             if (data == null)
                             {
-                                 osl.AppendLine("    1.0,");
+                                 osl.AppendLine("\t    1.0,");
                             }
                             break;        
                         }
                         if (data == null) osl.AppendLine("    0.0,");
-                        else osl.AppendLine($"    {data[i].Unk00},");
+                        else osl.AppendLine($"\t    {data[i].Unk00},");
                         break;
                     default:
                         throw new NotImplementedException();
                 }  
             }
 
-            osl.AppendLine("};");
+            osl.AppendLine("\t};");
         }
     }
     
-    private void WriteFunctionDefinition(bool bIsVertexShader)
+    private void WriteFunctionDefinition(bool bIsVertexShader, Material material)
     {
         osl.AppendLine("#define cmp -");
-        if (bIsVertexShader)
-        {          
-            osl.AppendLine().AppendLine("shader main(");
-            foreach (var texture in textures)
-            {
-                osl.AppendLine($"   {texture.Type} {texture.Variable},");
-            }
-            for (var i = 0; i < inputs.Count; i++)
-            {
-                osl.AppendLine($"\t{inputs[i].Type} {inputs[i].Variable}, // {inputs[i].Semantic}");
-            }
-            foreach (var output in outputs)
-            {
-                osl.AppendLine($"output {output.Type} {output.Variable} = {GetDefaultValue(output.Type)};");
-            }
-        }
-        else
+        osl.AppendLine("shader main(");
+        foreach (var i in inputs)
         {
-            osl.AppendLine("shader main(");
-            foreach (var i in inputs)
-            {
-                osl.AppendLine($"\t{i.Type} {i.Variable} = {GetDefaultValue(i.Type, 1)}, // {i.Semantic}");
-            }
-            foreach (var texture in textures)
-            {
-                osl.AppendLine($"\tstring {texture.Variable} = \"\",");
-            }
-
-            //osl.AppendLine($"\tDUAL tx = {GetDefaultValue("DUAL", 1)},");
-            foreach (var output in outputs)
-            {
-                osl.Append($"\toutput {output.Type} {output.Variable} = {GetDefaultValue(output.Type)}");
-                if (outputs.IndexOf(output) != outputs.Count - 1)
-                {
-                    osl.Append(",\n");
-                }
-                else
-                {
-                    osl.Append(")\n");
-                }
-            }
-            osl.AppendLine(" {");
+            osl.AppendLine($"\t{i.Type} {i.Variable} = {GetDefaultValue(i.Type, 1)}, // {i.Semantic}");
         }
+        foreach (var texture in textures)
+        {
+            osl.AppendLine($"\tstring {texture.Variable} = \"\",");
+        }
+
+        //osl.AppendLine($"\tDUAL tx = {GetDefaultValue("DUAL", 1)},");
+        foreach (var output in outputs)
+        {
+            osl.Append($"\toutput {output.Type} {output.Variable} = {GetDefaultValue(output.Type)}");
+            if (outputs.IndexOf(output) != outputs.Count - 1)
+            {
+                osl.Append(",\n");
+            }
+            else
+            {
+                osl.Append(")\n");
+            }
+        }
+        osl.AppendLine(" {");
+        WriteCbuffers(material, bIsVertexShader);
     }
     private Dictionary<char, string> componentConversion = new Dictionary<char, string>()
     {
@@ -611,7 +593,7 @@ public class OslConverter
                                 {
                                     //2D lookup
                                     funcList.Add(new Tuple<string, string>(
-                                        $"texture({mparams[0]}, {split[0]}, {split[1]})",
+                                        $"texture({mparams[0]}, {split[0]}, {split[1]}, \"wrap\", \"clamp\")",
                                         func.Groups[3].Value)
                                     );
                                 }
