@@ -39,10 +39,10 @@ public class OslConverter
             return "";
         }
 
-        if (!bIsVertexShader)
-        {
-            AddOutputs();
-        }
+        //if (!bIsVertexShader)
+        //{
+        //    AddOutputs();
+        //}
 
         WriteFooter(bIsVertexShader);
         return osl.ToString();
@@ -413,6 +413,18 @@ public class OslConverter
         }
     }
 
+    private Dictionary<char, string> componentConversion = new Dictionary<char, string>()
+    {
+        { 'x', "rgb.x" },
+        { 'y', "rgb.y" },
+        { 'z', "rgb.z" },
+        { 'w', "w" },
+        { 'r', "rgb.x" },
+        { 'g', "rgb.y" },
+        { 'b', "rgb.z" },
+        { 'a', "w" }
+    };
+
     private bool ConvertInstructions()
     {
         Dictionary<int, Texture> texDict = new Dictionary<int, Texture>();
@@ -436,12 +448,18 @@ public class OslConverter
                 return false;
             }
         }
+
         hlsl.ReadLine();
         do
         {
-            line = hlsl.ReadLine();
+            line = hlsl.ReadLine();            
+
             if (line != null)
             {
+                //Pre-processing
+                // Partial Derivative functions
+                line = Regex.Replace(line, "dd([xyz])(?:_coarse|_fine)", "D$1");
+
                 if (line.Contains("return;"))
                 {
                     break;
@@ -459,38 +477,30 @@ public class OslConverter
                 // todo add load, levelofdetail, o0.w, discard
                 else if (line.Contains("discard"))
                 {
+                    StringBuilder discard = new StringBuilder();
+                    discard.AppendLine("{");
                     foreach (Output output in outputs)
                     {
-                        osl.AppendLine($"\toutput {output.Type} {output.Variable} = {GetDefaultValue(output.Type)};");
+                        discard.AppendLine($"\t\toutput {output.Type} {output.Variable} = {GetDefaultValue(output.Type)};");
                     }
-                    osl.AppendLine("return;");
+                    discard.AppendLine("\t\treturn;\n\t}");
+                    osl.AppendLine(line.Replace("discard;", discard.ToString()));
                 }
                 else
                 {
-                    if (line.Contains("="))
+                    if (line.Contains(" = "))
                     {
                         //Assignment                        
-                        string[] eq_sides = line.Split("=");
+                        string[] eq_sides = line.Split(" = ");
                         Match set_var = Regex.Match(eq_sides[0], "([A-Za-z_][A-Za-z_0-9\\[\\]]+)\\.([xyzwrgba]{0,4})");
                         
-                        ///TODO: Escape for special functions (dot, texture, cross, etc)
+                        ///TODO: Escape for special functions (dot, texture, cross, etc)                       
                         
-                        Dictionary<char, string> componentConversion= new Dictionary<char, string>()
-                        {
-                            { 'x', "rgb.x" },
-                            { 'y', "rgb.y" },
-                            { 'z', "rgb.z" },
-                            { 'w', "w" },
-                            { 'r', "rgb.x" },
-                            { 'g', "rgb.y" },
-                            { 'b', "rgb.z" },
-                            { 'a', "w" }
-                        };
 
                         string placeholder = Regex.Replace(eq_sides[1], "([A-Za-z_][A-Za-z_0-9\\[\\]]+)\\.([xyzwrgba]{1,4})", "§");
                         MatchCollection vars = Regex.Matches(eq_sides[1], "([A-Za-z_][A-Za-z_0-9\\[\\]]+)\\.([xyzwrgba]{0,4})");
 
-                        osl.AppendLine($"// {line}");
+                        //osl.AppendLine($"\t// {line}");
 
                         //Getting a value from Regex groups is expensive, so we reduce calls as much as possible
                         string base_components = set_var.Groups[2].Value;
@@ -498,29 +508,25 @@ public class OslConverter
 
                         for (int i = 0; i < base_components.Length; i++)
                         {                            
-                            int placeholder_index = 0;
+                            string new_line = line_starter + $"{base_components[i]} = {placeholder}";
+                            int placeholder_index = new_line.IndexOf('§');
+                            int placeholders_iter = 0;
 
-                            string new_line = line_starter + $"{base_components[i]} = ";
-                            
                             // Construct other side of assignment
-                            foreach (char c in placeholder)
+                            while (placeholder_index != -1)
                             {
-                                if (c == '§')
-                                {
-                                    //Variable Handler
-                                    Match current_var = vars[placeholder_index];
-                                    string components = current_var.Groups[2].Value;
-                                    new_line += $"{current_var.Groups[1].Value}.{componentConversion[components[i % components.Length]]}";
-                                    placeholder_index++;
-                                }
-                                else
-                                {
-                                    new_line += c;
-                                }
+                                //Variable Handler
+                                Match current_var = vars[placeholders_iter];
+                                string components = current_var.Groups[2].Value;
+
+                                new_line = new_line.Remove(placeholder_index, 1);
+                                new_line = new_line.Insert(placeholder_index, $"{current_var.Groups[1].Value}.{componentConversion[components[i % components.Length]]}");
+
+                                placeholders_iter++;
+                                placeholder_index = new_line.IndexOf('§');
                             }
-                            osl.AppendLine(new_line);
-                        }
-                        osl.AppendLine();
+                            osl.AppendLine("\t" + new_line);
+                        }                       
                     }
                     else if (line.EndsWith(";"))
                     {
@@ -536,13 +542,17 @@ public class OslConverter
                                 }
                                 else
                                 {
-                                    osl.AppendLine($"{type} {parts[i].Trim()} = {GetDefaultValue(type)}");
+                                    osl.AppendLine($"\t{type} {parts[i].Trim()} = {GetDefaultValue(type)}");
                                 }
                             }
                         }
                     }
-                    osl.AppendLine(line);
-                }
+                    else
+                    {
+                        //This should pretty much only be flow control and other miscellaneous things, which are in OSL
+                        osl.AppendLine(line);
+                    }
+                }                
             }
         } while (line != null);
 
