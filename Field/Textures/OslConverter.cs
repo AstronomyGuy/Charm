@@ -194,7 +194,7 @@ public class OslConverter
             "};");
         osl.AppendLine("struct Dual {\n" +
             "\tfloat x;\n" +
-            "\tfloat y;\n" +
+            "\tfloat y\n" +
             "};");
     }
     private void WriteCbuffers(Material material, bool bIsVertexShader)
@@ -203,9 +203,9 @@ public class OslConverter
         foreach (var cbuffer in cbuffers)
         {
             if(bIsVertexShader)
-                osl.AppendLine($"{cbuffer.Type} {cbuffer.Variable}[{cbuffer.Count}] = ").AppendLine("{");
+                osl.AppendLine($"static {cbuffer.Type} {cbuffer.Variable}[{cbuffer.Count}] = ").AppendLine("{");
             else
-                osl.AppendLine($"{cbuffer.Type} {cbuffer.Variable}[{cbuffer.Count}] = ").AppendLine("{");
+                osl.AppendLine($"static {cbuffer.Type} {cbuffer.Variable}[{cbuffer.Count}] = ").AppendLine("{");
             
             dynamic data = null;
             if (bIsVertexShader)
@@ -415,13 +415,13 @@ public class OslConverter
     }
     private Dictionary<char, string> componentConversion = new Dictionary<char, string>()
     {
-        { 'x', "rgb[0]" },
-        { 'y', "rgb[1]" },
-        { 'z', "rgb[2]" },
+        { 'x', "rgb.x" },
+        { 'y', "rgb.y" },
+        { 'z', "rgb.z" },
         { 'w', "w" },
-        { 'r', "rgb[0]" },
-        { 'g', "rgb[1]" },
-        { 'b', "rgb[2]" },
+        { 'r', "rgb.x" },
+        { 'g', "rgb.y" },
+        { 'b', "rgb.z" },
         { 'a', "w" }
     };
     private Dictionary<char, string> componentConversionColor = new Dictionary<char, string>()
