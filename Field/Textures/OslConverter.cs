@@ -1,6 +1,7 @@
 ﻿using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Text.RegularExpressions;
 using Field.General;
 using Field.Models;
 
@@ -16,7 +17,7 @@ public class OslConverter
     private List<Cbuffer> cbuffers = new List<Cbuffer>();
     private List<Input> inputs = new List<Input>();
     private List<Output> outputs = new List<Output>();
-    
+
     public string HlslToOsl(Material material, string hlslText, bool bIsVertexShader)
     {
         hlsl = new StringReader(hlslText);
@@ -28,6 +29,7 @@ public class OslConverter
             osl.AppendLine("// masked");
         }
         // WriteTextureComments(material, bIsVertexShader);
+        WriteStructs();
         WriteCbuffers(material, bIsVertexShader);
         WriteFunctionDefinition(bIsVertexShader);
         hlsl = new StringReader(hlslText);
@@ -68,13 +70,13 @@ public class OslConverter
                         break;
                     }
                     continue;
-                }                
+                }
 
                 if (line.Contains("Texture"))
                 {
                     Texture texture = new Texture();
                     texture.Dimension = line.Split("<")[0];
-                    texture.Type = line.Split("<")[1].Split(">")[0];
+                    texture.Type = TypeConversion(line.Split("<")[1].Split(">")[0]);
                     texture.Variable = line.Split("> ")[1].Split(" :")[0];
                     texture.Index = Int32.TryParse(new string(texture.Variable.Skip(1).ToArray()), out int index) ? index : -1;
                     textures.Add(texture);
@@ -119,8 +121,12 @@ public class OslConverter
 
     private string TypeConversion(string type)
     {
-        ///TODO: Matrix handling
-        
+        if (type.Length >= 2 && type[type.Length - 2] == 'x')
+        {
+            // Might not work, will have to find a shader using matrices to test
+            return "matrix";
+        }
+
         if (type.EndsWith("4"))
         {
             return "RGBA";
@@ -137,7 +143,7 @@ public class OslConverter
             //Handles minimum bit types (e.g. min16float, min12int, etc.)
             return TypeConversion(type.Substring(5));
         }
-        switch(type.ToLower())
+        switch (type.ToLower())
         {
             case "uint":
             case "dword":
@@ -153,6 +159,43 @@ public class OslConverter
         }
     }
 
+    private string GetDefaultValue(string type, int val = 0, bool force = true)
+    {
+        switch (type)
+        {
+            case "RGBA":
+                return $"{{vector({val}, {val}, {val}), {val}}}";
+            case "DUAL":
+                return $"{{{val}, {val}}}";
+            case "vector":
+                return $"vector({val}, {val}, {val})";
+            case "float":
+            case "int":
+                return $"{val}";
+            case "matrix":
+                return val == 0 ? "1" : val.ToString(); //Page 29 of OSL specification; setting to 1 will create an identity matrix
+
+        }
+        if (force)
+        {
+            //Will attempt to convert type before throwing error
+            //force variable exists to prevent this from infinitely looping
+            return GetDefaultValue(TypeConversion(type), force: false);
+        }
+        //All types returned from TypeConversion should be represented here
+        throw new NotImplementedException();
+    }
+    private void WriteStructs()
+    {
+        osl.AppendLine("struct RGBA {\n" +
+            "\tvector rgb;\n" +
+            "\tfloat w;\n" +
+            "};");
+        osl.AppendLine("struct Dual {\n" +
+            "\tfloat x;\n" +
+            "\tfloat y\n" +
+            "};");
+    }
     private void WriteCbuffers(Material material, bool bIsVertexShader)
     {
         // Try to find matches, pixel shader has Unk2D0 Unk2E0 Unk2F0 Unk300 available
@@ -324,32 +367,9 @@ public class OslConverter
     
     private void WriteFunctionDefinition(bool bIsVertexShader)
     {
-        if (!bIsVertexShader)
-        {
-            foreach (var i in inputs)
-            {
-                if (i.Type == "RGBA")
-                {
-                    osl.AppendLine($"static {i.Type} {i.Variable} = " + "{color(1, 1, 1), 1};\n");
-                }
-                else if (i.Type == "vector")
-                {
-                    osl.AppendLine($"static {i.Type} {i.Variable} = " + "vector(1, 1, 1);\n");
-                }
-                else if (i.Type == "int")
-                {
-                    osl.AppendLine($"static {i.Type} {i.Variable} = " + "1;\n");
-                }
-            }
-        }
         osl.AppendLine("#define cmp -");
         if (bIsVertexShader)
-        {
-            foreach (var output in outputs)
-            {
-                osl.AppendLine($"{output.Type} {output.Variable};");
-            }
-
+        {          
             osl.AppendLine().AppendLine("shader main(");
             foreach (var texture in textures)
             {
@@ -357,45 +377,39 @@ public class OslConverter
             }
             for (var i = 0; i < inputs.Count; i++)
             {
-                if (i == inputs.Count - 1)
-                {
-                    osl.AppendLine($"   {inputs[i].Type} {inputs[i].Variable}) // {inputs[i].Semantic}");
-                }
-                else
-                {
-                    osl.AppendLine($"   {inputs[i].Type} {inputs[i].Variable}, // {inputs[i].Semantic}");
-                }
+                osl.AppendLine($"\t{inputs[i].Type} {inputs[i].Variable}, // {inputs[i].Semantic}");
+            }
+            foreach (var output in outputs)
+            {
+                osl.AppendLine($"output {output.Type} {output.Variable} = {GetDefaultValue(output.Type)};");
             }
         }
         else
         {
             osl.AppendLine("shader main(");
-            foreach (var texture in textures)
-            {
-                osl.AppendLine($"   {texture.Type} {texture.Variable},");
-            }
-
-            osl.AppendLine($"   DUAL tx)");
-
-            osl.AppendLine("{").AppendLine("    shader output;");
-            // Output render targets, todo support vertex shader
-            osl.AppendLine("    RGBA o0,o1,o2;");
             foreach (var i in inputs)
             {
-                if (i.Type == "RGBA")
-                {
-                    osl.AppendLine($"    {i.Variable}.rgb.x = {i.Variable}.rgb.x * tx.x;\n    {i.Variable}.rgb.y = {i.Variable}.rgb.y * tx.y;\n    {i.Variable}.rgb.z = {i.Variable}.rgb.z * tx.x;\n    {i.Variable}.w = {i.Variable}.w * tx.y;\n");
-                }
-                else if (i.Type == "vector")
-                {
-                    osl.AppendLine($"    {i.Variable}.rgb.x = {i.Variable}.rgb.x * tx.x;\n    {i.Variable}.rgb.y = {i.Variable}.rgb.y * tx.y;\n    {i.Variable}.rgb.z = {i.Variable}.rgb.z * tx.x;\n");
-                }
-                else if (i.Type == "int")
-                {
-                    osl.AppendLine($"    {i.Variable} = {i.Variable} * tx.x;");
-                }
-                osl.Replace("v0.xyzw = v0.xyzw * tx.xyxy;", "");
+                osl.AppendLine($"\t{i.Type} {i.Variable} = {GetDefaultValue(i.Type, 1)}, // {i.Semantic}");
             }
+            foreach (var texture in textures)
+            {
+                osl.AppendLine($"\tstring {texture.Variable} = \"\",");
+            }
+
+            //osl.AppendLine($"\tDUAL tx = {GetDefaultValue("DUAL", 1)},");
+            foreach (var output in outputs)
+            {
+                osl.Append($"\toutput {output.Type} {output.Variable} = {GetDefaultValue(output.Type)}");
+                if (outputs.IndexOf(output) != outputs.Count - 1)
+                {
+                    osl.Append(",\n");
+                }
+                else
+                {
+                    osl.Append(")\n");
+                }
+            }
+            osl.AppendLine(" {");
         }
     }
 
@@ -440,15 +454,93 @@ public class OslConverter
                     var sampleUv = line.Split(", ")[1].Split(")")[0];
                     var dotAfter = line.Split(").")[1];
                     // todo add dimension
-                    osl.AppendLine($"   {equal}= Material_Texture2D_{sortedIndices.IndexOf(texIndex)}.SampleLevel(Material_Texture2D_{sampleIndex-1}Sampler, {sampleUv}, 0).{dotAfter}");
+                    osl.AppendLine($"\t{equal}= texture(t{sortedIndices.IndexOf(texIndex)}, {sampleUv}).{dotAfter}");
                 }
                 // todo add load, levelofdetail, o0.w, discard
                 else if (line.Contains("discard"))
                 {
-                    osl.AppendLine(line.Replace("discard", "{ output.OpacityMask = 0; return output; }"));
+                    foreach (Output output in outputs)
+                    {
+                        osl.AppendLine($"\toutput {output.Type} {output.Variable} = {GetDefaultValue(output.Type)};");
+                    }
+                    osl.AppendLine("return;");
                 }
                 else
                 {
+                    if (line.Contains("="))
+                    {
+                        //Assignment                        
+                        string[] eq_sides = line.Split("=");
+                        Match set_var = Regex.Match(eq_sides[0], "([A-Za-z_][A-Za-z_0-9\\[\\]]+)\\.([xyzwrgba]{0,4})");
+                        
+                        ///TODO: Escape for special functions (dot, texture, cross, etc)
+                        
+                        Dictionary<char, string> componentConversion= new Dictionary<char, string>()
+                        {
+                            { 'x', "rgb.x" },
+                            { 'y', "rgb.y" },
+                            { 'z', "rgb.z" },
+                            { 'w', "w" },
+                            { 'r', "rgb.x" },
+                            { 'g', "rgb.y" },
+                            { 'b', "rgb.z" },
+                            { 'a', "w" }
+                        };
+
+                        string placeholder = Regex.Replace(eq_sides[1], "([A-Za-z_][A-Za-z_0-9\\[\\]]+)\\.([xyzwrgba]{1,4})", "§");
+                        MatchCollection vars = Regex.Matches(eq_sides[1], "([A-Za-z_][A-Za-z_0-9\\[\\]]+)\\.([xyzwrgba]{0,4})");
+
+                        osl.AppendLine($"// {line}");
+
+                        //Getting a value from Regex groups is expensive, so we reduce calls as much as possible
+                        string base_components = set_var.Groups[2].Value;
+                        string line_starter = $"{set_var.Groups[1]}.";
+
+                        for (int i = 0; i < base_components.Length; i++)
+                        {                            
+                            int placeholder_index = 0;
+
+                            string new_line = line_starter + $"{base_components[i]} = ";
+                            
+                            // Construct other side of assignment
+                            foreach (char c in placeholder)
+                            {
+                                if (c == '§')
+                                {
+                                    //Variable Handler
+                                    Match current_var = vars[placeholder_index];
+                                    string components = current_var.Groups[2].Value;
+                                    new_line += $"{current_var.Groups[1].Value}.{componentConversion[components[i % components.Length]]}";
+                                    placeholder_index++;
+                                }
+                                else
+                                {
+                                    new_line += c;
+                                }
+                            }
+                            osl.AppendLine(new_line);
+                        }
+                        osl.AppendLine();
+                    }
+                    else if (line.EndsWith(";"))
+                    {
+                        //Declaration
+                        string[] parts = line.Split(new char[] {' ', ',', ';'});
+                        string type = "";
+                        for (int i = 1; i < parts.Count(); i++)
+                        {
+                            if (parts[i].Trim().Length > 0) {
+                                if (type.Length == 0)
+                                {
+                                    type = TypeConversion(parts[i].Trim());
+                                }
+                                else
+                                {
+                                    osl.AppendLine($"{type} {parts[i].Trim()} = {GetDefaultValue(type)}");
+                                }
+                            }
+                        }
+                    }
                     osl.AppendLine(line);
                 }
             }
@@ -466,7 +558,7 @@ public class OslConverter
         ///RT1
 
         // Normal
-        float3 biased_normal = o1.xyz - float3(0.5, 0.5, 0.5);
+        float3 biased_normal = o1.xyz - vector(0.5, 0.5, 0.5);
         float normal_length = length(biased_normal);
         float3 normal_in_world_space = biased_normal / normal_length;
         normal_in_world_space.z = sqrt(1.0 - saturate(dot(normal_in_world_space.xy, normal_in_world_space.xy)));
@@ -490,10 +582,6 @@ public class OslConverter
 
     private void WriteFooter(bool bIsVertexShader)
     {
-        osl.AppendLine("}").AppendLine("};");
-        if (!bIsVertexShader)
-        {
-            osl.AppendLine("shader s;").AppendLine($"return s.main({String.Join(',', textures.Select(x => x.Variable))},tx);");
-        }
+        osl.AppendLine("};");
     }
 }
