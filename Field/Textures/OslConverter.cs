@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -133,10 +134,10 @@ public class OslConverter
         }
         else if (type.EndsWith("3"))
         {
-            return "vector";
+            return "RGBA";
         }
         else if (type.EndsWith("2")) {
-            return "DUAL";
+            return "RGBA";
         }
         else if (type.ToLower().StartsWith("min"))
         {
@@ -163,12 +164,12 @@ public class OslConverter
     {
         switch (type)
         {
-            case "RGBA":
+            case "RGBA":            
                 return $"{{vector({val}, {val}, {val}), {val}}}";
-            case "DUAL":
-                return $"{{{val}, {val}}}";
-            case "vector":
-                return $"vector({val}, {val}, {val})";
+            //case "DUAL":
+            //    return $"{{{val}, {val}}}";
+            //case "vector":
+            //    return $"vector({val}, {val}, {val})";
             case "float":
             case "int":
                 return $"{val}";
@@ -298,14 +299,14 @@ public class OslConverter
                         {
                             if (data == null)
                             {
-                                 osl.AppendLine("    {color(1.0, 1.0, 1.0), 1.0},");
+                                 osl.AppendLine($"    {GetDefaultValue("RGBA")},");
                             }
                             break;        
                         }
                         
                         if (data == null)
-                        { 
-                            osl.AppendLine("    {color(0.0, 0.0, 0.0), 0.0},");
+                        {
+                            osl.AppendLine($"    {GetDefaultValue("RGBA")},");
                         }
                         else
                         {
@@ -313,22 +314,22 @@ public class OslConverter
                             {
                                 if (data[i] is Vector4)
                                 {
-                                    osl.AppendLine($"    {{color({data[i].X}, {data[i].Y}, {data[i].Z}), {data[i].W}}},");
+                                    osl.AppendLine($"    {{vector({data[i].X}, {data[i].Y}, {data[i].Z}), {data[i].W}}},");
                                 }
                                 else
                                 {
                                     var x = data[i].Unk00.X; // really bad but required
-                                    osl.AppendLine($"    {{color({x}, {data[i].Unk00.Y}, {data[i].Unk00.Z}), {data[i].Unk00.W}}},");
+                                    osl.AppendLine($"    {{vector({x}, {data[i].Unk00.Y}, {data[i].Unk00.Z}), {data[i].Unk00.W}}},");
                                 }
                             }
                             catch (Exception e)  // figure out whats up here, taniks breaks it
                             {
                                 if(bIsVertexShader)
                                 {
-                                    osl.AppendLine("    {color(1.0, 1.0, 1.0), 1.0},");
+                                    osl.AppendLine($"    {GetDefaultValue("RGBA")},");
                                 }
                                 else
-                                    osl.AppendLine("    {color(0.0, 0.0, 0.0), 0.0},");
+                                    osl.AppendLine($"    {GetDefaultValue("RGBA")},");
                             }
                         }
                         break;
@@ -412,7 +413,6 @@ public class OslConverter
             osl.AppendLine(" {");
         }
     }
-
     private Dictionary<char, string> componentConversion = new Dictionary<char, string>()
     {
         { 'x', "rgb.x" },
@@ -424,6 +424,60 @@ public class OslConverter
         { 'b', "rgb.z" },
         { 'a', "w" }
     };
+    private Dictionary<char, string> componentConversionColor = new Dictionary<char, string>()
+    {
+        { 'x', "r" },
+        { 'y', "g" },
+        { 'z', "b" },
+        { 'w', "a" },
+        { 'r', "r" },
+        { 'g', "g" },
+        { 'b', "b" },
+        { 'a', "a" }
+    };
+    private string[] splitVariable(string variable)
+    {
+        //TODO: Reorder vector by components if they exist
+        if (Regex.IsMatch(variable, "\\{([0-9\\.]+), ([0-9\\.]+), ([0-9\\.]+), ([0-9\\.]+)\\}"))
+        {
+            Match match = Regex.Match(variable, "\\{([0-9\\.]+), ([0-9\\.]+), ([0-9\\.]+), ([0-9\\.]+)\\}");
+            return new string[] { match.Groups[1].Value, match.Groups[2].Value, match.Groups[3].Value, match.Groups[4].Value };
+        }
+        else if (variable.Contains("vector"))
+        {
+            if (variable.Contains("{"))
+            {
+                //RGBA definition
+                Match match = Regex.Match(variable, "{vector\\(([0-9\\.]*), ?([0-9\\.]*), ?([0-9\\.]*)\\), ([0-9\\.]*)}");
+                return new string[] { match.Groups[1].Value, match.Groups[2].Value, match.Groups[3].Value, match.Groups[4].Value };
+            }
+            else
+            {
+                //3-dim Vector definition
+                Match match = Regex.Match(variable, "vector\\(([0-9\\.]*), ?([0-9\\.]*), ?([0-9\\.]*)\\)");
+                return new string[] { match.Groups[1].Value, match.Groups[2].Value, match.Groups[3].Value };
+            }
+        }
+        else if (!variable.Contains('.'))
+        {
+            // Does not have dimension modifier; must be int or other primitive type
+            return new string[] { variable };
+        }
+        else
+        {
+            //var.[xyzrgba]
+
+            //Will not work if variable is not RGBA
+            //All variables *should* be RGBA though so it should be fine
+            string[] split = variable.Split(".");
+            List<string> result = new List<string>();
+            foreach (char c in split[1])
+            {
+                result.Add($"{split[0]}.{componentConversion[c]}");
+            }
+            return result.ToArray();
+        }
+    }    
 
     private bool ConvertInstructions()
     {
@@ -459,21 +513,28 @@ public class OslConverter
                 //Pre-processing
                 // Partial Derivative functions
                 line = Regex.Replace(line, "dd([xyz])(?:_coarse|_fine)", "D$1");
+                // Manual vector declarations
+                line = Regex.Replace(line, "(float|uint|int|double)2\\(([0-9\\., ]*)\\)", "vector($2,0).xy");
+                line = Regex.Replace(line, "(float|uint|int|double)3\\(([0-9\\., ]*)\\)", "vector($2).xyz");
+                line = Regex.Replace(line, "(float|uint|int|double)4\\(([0-9\\.]+, ?[0-9\\.]+, ?[0-9\\.]+), ?([0-9.]+)\\)", "{$2, $3}");
+                // Texture Sampling
+                line = Regex.Replace(line, "t(\\d+).Sample\\(s1_s, ([A-Za-z_][A-Za-z_0-9\\\\.]*)\\)\\.?([xyzwrgba]{0,4})", "texture(t$1, $2).$3");
+
 
                 if (line.Contains("return;"))
                 {
                     break;
                 }
-                if (line.Contains("Sample"))
-                {
-                    var equal = line.Split("=")[0];
-                    var texIndex = Int32.Parse(line.Split(".Sample")[0].Split("t")[1]);
-                    var sampleIndex = Int32.Parse(line.Split("(s")[1].Split("_s,")[0]);
-                    var sampleUv = line.Split(", ")[1].Split(")")[0];
-                    var dotAfter = line.Split(").")[1];
-                    // todo add dimension
-                    osl.AppendLine($"\t{equal}= texture(t{sortedIndices.IndexOf(texIndex)}, {sampleUv}).{dotAfter}");
-                }
+                //if (line.Contains("Sample"))
+                //{
+                //    var equal = line.Split("=")[0];
+                //    var texIndex = Int32.Parse(line.Split(".Sample")[0].Split("t")[1]);
+                //    var sampleIndex = Int32.Parse(line.Split("(s")[1].Split("_s,")[0]);
+                //    var sampleUv = line.Split(", ")[1].Split(")")[0];
+                //    var dotAfter = line.Split(").")[1];
+                //    // todo add dimension
+                //    osl.AppendLine($"\t{equal}= texture(t{sortedIndices.IndexOf(texIndex)}, {sampleUv}).{dotAfter}");
+                //}
                 // todo add load, levelofdetail, o0.w, discard
                 else if (line.Contains("discard"))
                 {
@@ -485,7 +546,7 @@ public class OslConverter
                     }
                     discard.AppendLine("\t\treturn;\n\t}");
                     osl.AppendLine(line.Replace("discard;", discard.ToString()));
-                }
+                }                
                 else
                 {
                     if (line.Contains(" = "))
@@ -493,11 +554,139 @@ public class OslConverter
                         //Assignment                        
                         string[] eq_sides = line.Split(" = ");
                         Match set_var = Regex.Match(eq_sides[0], "([A-Za-z_][A-Za-z_0-9\\[\\]]+)\\.([xyzwrgba]{0,4})");
-                        
-                        ///TODO: Escape for special functions (dot, texture, cross, etc)                       
-                        
 
-                        string placeholder = Regex.Replace(eq_sides[1], "([A-Za-z_][A-Za-z_0-9\\[\\]]+)\\.([xyzwrgba]{1,4})", "§");
+                        string placeholder = Regex.Replace(eq_sides[1], "([A-Za-z_][A-Za-z_0-9\\.]*)\\((.*)\\)\\.?([xyzwrgba]{0,4})", "ø");
+                        List<Tuple<string, string>> funcList = new List<Tuple<string, string>>();
+                        int match_idx = 0;
+                        /// Escape for special functions   
+                        foreach (Match func in Regex.Matches(line, "([A-Za-z_][A-Za-z_0-9\\.]*)\\((.*)\\)\\.?([xyzwrgba]{0,4})"))
+                        {
+                            //Match func = Regex.Match(line, "([A-Za-z_][A-Za-z_0-9\\.]*)\\((.*)\\)\\.?([xyzwrgba]{0,4})");
+                            string method = func.Groups[1].Value.ToLower().Trim();
+                            string[] mparams = func.Groups[2].Value.Split(',').Select(s => s.Trim()).ToArray();
+
+                            if (method == "texture" || Regex.IsMatch(method, "t\\d+.sample")) //tX.Sample gets replaced by texture in pre-processing
+                            {
+                                //Split input coord into separate coordinates
+                                string[] split = splitVariable(mparams[1]);
+
+                                /// --- NOTES FOR ALPHA HANDLING ---
+                                /// The alpha channel needs to be referenced with an additional parameter: ..., "alpha", <variable>
+                                /// This requires a dummy variable to dump the alpha value into and a bunch of other special handling
+                                ///  - OSL Specification pg.66
+                                ///  Example: https://github.com/AcademySoftwareFoundation/OpenShadingLanguage/blob/main/testsuite/texture-alpha/test.osl
+                                if (func.Groups[2].Value.Contains('w') || func.Groups[2].Value.Contains('a')) {
+                                    Console.WriteLine(" - ALPHA IN TEXTURE CALL");
+                                }
+
+                                if (split.Length == 2)
+                                {
+                                    //2D lookup
+                                    funcList.Add(new Tuple<string, string>(
+                                        $"texture({mparams[0]}, {split[0]}, {split[1]})",
+                                        func.Groups[3].Value)
+                                    );
+                                }
+                                else if (split.Length == 3)
+                                {
+                                    //3D lookup
+                                    funcList.Add(new Tuple<string, string>(
+                                        $"texture3d({mparams[0]}, {split[0]}, {split[1]}, {split[2]})",
+                                        func.Groups[3].Value)
+                                    );
+                                }
+                            }
+                            else if (method == "dot" || method == "cross")
+                            {
+                                //Convert inputs into vectors
+                                string[] vec1 = splitVariable(mparams[0]);
+                                string[] vec2 = splitVariable(mparams[1]);
+
+                                //Assume vectors are same length
+                                if (vec1.Length == 2)
+                                {
+                                    funcList.Add(new Tuple<string, string>(
+                                        $"{method}(vector({vec1[0]}, {vec1[1]}, 0), vector({vec2[0]}, {vec2[1]}, 0))",
+                                        func.Groups[3].Value
+                                    ));
+                                }
+                                else if (vec1.Length == 3)
+                                {
+                                    funcList.Add(new Tuple<string, string>(
+                                        $"{method}(vector({vec1[0]}, {vec1[1]}, {vec1[2]}), vector({vec2[0]}, {vec2[1]}, {vec2[2]}))",
+                                        func.Groups[3].Value
+                                    ));
+                                }                         
+                                else if (method == "dot") //Cross is undefined unless length is 2 or 3, only have to worry abt dot
+                                {
+                                    string equation = "(";
+                                    for (int i = 0; i < vec1.Length; i++)
+                                    {
+                                        equation += $"{vec1[i]}*{vec2[i]} + ";
+                                    }
+                                    equation += $"0); // Dot Product for {vec1.Length} elements";
+                                    funcList.Add(new Tuple<string, string>(
+                                        equation,
+                                        func.Groups[3].Value
+                                    ));
+                                }
+                            }                        
+                            else if (method == "length" || method == "normalize")
+                            {
+                                //Convert input into vector
+                                string[] vec1 = splitVariable(mparams[0]);
+                                funcList.Add(new Tuple<string, string>(
+                                    $"{method}(vector({vec1[0]}, {vec1[1]}, {vec1[2]}))",
+                                    func.Groups[3].Value
+                                ));
+                            }
+                            else if (method == "distance")
+                            {
+                                //Convert inputs into points
+                                string[] vec1 = splitVariable(mparams[0]);
+                                string[] vec2 = splitVariable(mparams[1]);
+                                //Assume vectors are same length
+                                if (vec1.Length == 2)
+                                {
+                                    funcList.Add(new Tuple<string, string>(
+                                        $"{method}(point({vec1[0]}, {vec1[1]}, 0), point({vec2[0]}, {vec2[1]}, 0))",
+                                        func.Groups[3].Value
+                                    ));
+                                } 
+                                else
+                                {
+                                    funcList.Add(new Tuple<string, string>(
+                                        $"{method}(point({vec1[0]}, {vec1[1]}, {vec1[2]}), point({vec2[0]}, {vec2[1]}, {vec2[2]}))",
+                                        func.Groups[3].Value
+                                    ));
+                                }
+                                    
+                            }
+                            else
+                            {
+                                //If function has no special properties, put it back and allow it to be split
+                                
+                                int last_index = placeholder.IndexOf("ø");
+                                for (int i = 0; i < match_idx; i++)
+                                {
+                                    last_index = placeholder.IndexOf("ø", last_index);                                    
+                                }
+                                if (last_index == -1)
+                                {
+                                    //Ran out of ø chars even though they should be identical
+                                    throw new Exception("Number of Function placeholders does not match number of Functions.");
+                                }
+
+                                placeholder = placeholder.Remove(last_index, 1);
+                                placeholder = placeholder.Insert(last_index, func.Value);
+                            }
+                            match_idx++;
+                            /// Remaining Functions: faceforward, reflect, refract, fresnel, rotate
+                            /// Not included because I don't think they're used in HLSL
+                        }
+                        placeholder = Regex.Replace(placeholder, "([A-Za-z_][A-Za-z_0-9\\[\\]]+)\\.([xyzwrgba]{1,4})", "§");
+
+
                         MatchCollection vars = Regex.Matches(eq_sides[1], "([A-Za-z_][A-Za-z_0-9\\[\\]]+)\\.([xyzwrgba]{0,4})");
 
                         //osl.AppendLine($"\t// {line}");
@@ -512,7 +701,7 @@ public class OslConverter
                             int placeholder_index = new_line.IndexOf('§');
                             int placeholders_iter = 0;
 
-                            // Construct other side of assignment
+                            // Construct loose variables
                             while (placeholder_index != -1)
                             {
                                 //Variable Handler
@@ -525,6 +714,51 @@ public class OslConverter
                                 placeholders_iter++;
                                 placeholder_index = new_line.IndexOf('§');
                             }
+
+                            placeholder_index = new_line.IndexOf('ø');
+                            placeholders_iter = 0;
+                            //Construct functions
+                            while (placeholder_index != -1)
+                            {
+                                //Variable Handler
+                                Tuple<string, string> current_func = funcList[placeholders_iter];
+                                string components = current_func.Item2;
+                                string body = current_func.Item1;
+
+                                Match dim4 = Regex.Match(body, $"\\{{([0-9\\.]+), ([0-9\\.]+), ([0-9\\.]+), ([0-9\\.]+)\\}}\\.([xyzwrgba]{{1, 4}})");
+                                while (dim4.Success)
+                                {
+                                    int index = dim4.Groups[5].Value[i % dim4.Groups[5].Length] switch {
+                                        'x' => 1,
+                                        'y' => 2,
+                                        'z' => 3,
+                                        'w' => 4,
+                                        'r' => 1,
+                                        'g' => 2,
+                                        'b' => 3,
+                                        'a' => 4
+                                    };
+                                    string replacement = $"{{{dim4.Groups[index]}}}";
+                                    dim4 = Regex.Match(body, $"\\{{([0-9\\.]+), ([0-9\\.]+), ([0-9\\.]+), ([0-9\\.]+)\\}}\\.[xyzwrgba]{{{i}}}([xyzwrgba])");
+                                }
+                                
+                                body = Regex.Replace(body, $@"(vector\([0-9\.]+, ?[0-9\.]+, ?[0-9\.]+\)\.)[xyzwrgba]{{{i}}}([xyzwrgba])", "$1$2");
+
+                                new_line = new_line.Remove(placeholder_index, 1);
+                                if (components.Length > 0)
+                                {
+                                    Dictionary<char, string> converter = body.Contains("texture") ? componentConversionColor : componentConversion;
+                                    new_line = new_line.Insert(placeholder_index, $"{body}.{converter[components[i % components.Length]]}");
+                                }
+                                else
+                                {
+                                    new_line = new_line.Insert(placeholder_index, $"{body}");
+                                }
+
+                                placeholders_iter++;
+                                placeholder_index = new_line.IndexOf('ø');
+                            }
+
                             osl.AppendLine("\t" + new_line);
                         }                       
                     }
