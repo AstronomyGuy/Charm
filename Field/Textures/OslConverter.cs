@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using Field.General;
 using Field.Models;
+using Internal.Fbx;
 
 namespace Field;
 
@@ -18,6 +19,75 @@ public class OslConverter
     private List<Cbuffer> cbuffers = new List<Cbuffer>();
     private List<Input> inputs = new List<Input>();
     private List<Output> outputs = new List<Output>();
+
+    private Dictionary<string, string> variableTypes = new Dictionary<string, string>();
+
+    
+    private string convertComponent(char component, string type = "unknown")
+    {
+        Dictionary<char, string> componentConversionRGBA = new Dictionary<char, string>()
+        {
+            { 'x', "rgb[0]" },
+            { 'y', "rgb[1]" },
+            { 'z', "rgb[2]" },
+            { 'w', "w" },
+            { 'r', "rgb[0]" },
+            { 'g', "rgb[1]" },
+            { 'b', "rgb[2]" },
+            { 'a', "w" }
+        };
+        Dictionary<char, int> componentIndex = new Dictionary<char, int>()
+        {
+            { 'x', 0 },
+            { 'y', 1 },
+            { 'z', 2 },
+            { 'w', 3 },
+            { 'r', 0 },
+            { 'g', 1 },
+            { 'b', 2 },
+            { 'a', 3 }
+        };
+        Dictionary<char, string> componentConversionColor = new Dictionary<char, string>()
+        {
+            { 'x', "r" },
+            { 'y', "g" },
+            { 'z', "b" },
+            { 'w', "a" },
+            { 'r', "r" },
+            { 'g', "g" },
+            { 'b', "b" },
+            { 'a', "a" }
+        };
+        switch (type)
+        {
+            case "RGBA":
+                return '.' + componentConversionRGBA[component];
+            case "index":
+                return componentIndex[component].ToString();
+            case "vector":
+                return $"[{componentIndex[component]}]";
+            case "int":
+            case "float":
+                return "";
+            case "texture": //Convenience alias
+            case "color":
+                return '.' + componentConversionColor[component];
+        }
+        return componentConversionRGBA[component]; //When in doubt, RGBA
+    }
+
+    private string getVariableType(string type) { 
+        if (type.Contains("["))
+        {
+            //Array reference
+            return variableTypes[type.Split('[')[0]];
+        }
+        else
+        {
+            //Direct variable
+            return variableTypes[type];
+        }
+    }
 
     public string HlslToOsl(Material material, string hlslText, bool bIsVertexShader)
     {
@@ -207,6 +277,7 @@ public class OslConverter
                 osl.AppendLine($"\t {cbuffer.Type} {cbuffer.Variable}[{cbuffer.Count}] = ").AppendLine("\t{");
             else
                 osl.AppendLine($"\t {cbuffer.Type} {cbuffer.Variable}[{cbuffer.Count}] = ").AppendLine("\t{");
+            variableTypes.Add(cbuffer.Variable, cbuffer.Type);
             
             dynamic data = null;
             if (bIsVertexShader)
@@ -375,16 +446,18 @@ public class OslConverter
         foreach (var i in inputs)
         {
             osl.AppendLine($"\t{i.Type} {i.Variable} = {GetDefaultValue(i.Type, 1)}, // {i.Semantic}");
+            variableTypes.Add(i.Variable, i.Type);
         }
         foreach (var texture in textures)
         {
-            osl.AppendLine($"\tstring {texture.Variable} = \"\",");
+            osl.AppendLine($"\tstring {texture.Variable} = \"\",");            
         }
 
         //osl.AppendLine($"\tDUAL tx = {GetDefaultValue("DUAL", 1)},");
         foreach (var output in outputs)
         {
             osl.Append($"\toutput {output.Type} {output.Variable} = {GetDefaultValue(output.Type)}");
+            variableTypes.Add(output.Variable, output.Type);
             if (outputs.IndexOf(output) != outputs.Count - 1)
             {
                 osl.Append(",\n");
@@ -396,40 +469,7 @@ public class OslConverter
         }
         osl.AppendLine(" {");
         WriteCbuffers(material, bIsVertexShader);
-    }
-    private Dictionary<char, string> componentConversion = new Dictionary<char, string>()
-    {
-        { 'x', "rgb[0]" },
-        { 'y', "rgb[1]" },
-        { 'z', "rgb[2]" },
-        { 'w', "w" },
-        { 'r', "rgb[0]" },
-        { 'g', "rgb[1]" },
-        { 'b', "rgb[2]" },
-        { 'a', "w" }
-    };
-    private Dictionary<char, int> componentIndex = new Dictionary<char, int>()
-    {
-        { 'x', 0 },
-        { 'y', 1 },
-        { 'z', 2 },
-        { 'w', 3 },
-        { 'r', 0 },
-        { 'g', 1 },
-        { 'b', 2 },
-        { 'a', 3 }
-    };
-    private Dictionary<char, string> componentConversionColor = new Dictionary<char, string>()
-    {
-        { 'x', "r" },
-        { 'y', "g" },
-        { 'z', "b" },
-        { 'w', "a" },
-        { 'r', "r" },
-        { 'g', "g" },
-        { 'b', "b" },
-        { 'a', "a" }
-    };
+    }    
     private string[] splitVariable(string variable)
     {
         //TODO: Reorder vector by components if they exist
@@ -468,7 +508,7 @@ public class OslConverter
             List<string> result = new List<string>();
             foreach (char c in split[1])
             {
-                result.Add($"{split[0]}.{componentConversion[c]}");
+                result.Add($"{split[0]}{convertComponent(c, "RGBA")}");
             }
             return result.ToArray();
         }
@@ -483,7 +523,7 @@ public class OslConverter
         Match dim4 = Regex.Match(body, query);
         while (dim4.Success)
         {
-            int index = componentIndex[dim4.Groups[9].Value[i % dim4.Groups[9].Length]]+1;
+            int index = int.Parse(convertComponent(dim4.Groups[9].Value[i % dim4.Groups[9].Length], "index"))+1; //Should never return a non-int type
             if (dim4.Groups[5].Length > 0) { index += 5; }
 
             string replacement = dim4.Groups[index].Value;
@@ -567,7 +607,8 @@ public class OslConverter
                 {
                     if (line.Contains(" = "))
                     {
-                        //Assignment                        
+                        //Assignment
+                        
                         string[] eq_sides = line.Split(" = ");
                         Match set_var = Regex.Match(eq_sides[0], "([A-Za-z_][A-Za-z_0-9\\[\\]]+)\\.([xyzwrgba]{0,4})");
 
@@ -706,11 +747,11 @@ public class OslConverter
 
                         //Getting a value from Regex groups is expensive, so we reduce calls as much as possible
                         string base_components = set_var.Groups[2].Value;
-                        string line_starter = $"{set_var.Groups[1]}.";
+                        string line_starter = $"{set_var.Groups[1]}";
 
                         for (int i = 0; i < base_components.Length; i++)
                         {
-                            string new_line = line_starter + $"{componentConversion[base_components[i]]} = {placeholder}";
+                            string new_line = line_starter + $"{convertComponent(base_components[i], "RGBA")} = {placeholder}";
 
                             if (new_line.Contains("vector") || (new_line.Contains("{") && new_line.Contains("}")))
                             {                                
@@ -729,7 +770,7 @@ public class OslConverter
                                 string body = current_var.Groups[1].Value;
 
                                 new_line = new_line.Remove(placeholder_index, 1);
-                                new_line = new_line.Insert(placeholder_index, $"{current_var.Groups[1].Value}.{componentConversion[components[i % components.Length]]}");
+                                new_line = new_line.Insert(placeholder_index, $"{current_var.Groups[1].Value}{convertComponent(components[i % components.Length], getVariableType(current_var.Groups[1].Value))}");
 
                                 placeholders_iter++;
                                 placeholder_index = new_line.IndexOf('§');
@@ -749,21 +790,20 @@ public class OslConverter
                                 if (components.Length > 0)
                                 {
                                     if (body.Contains("texture")) {
-                                        string component = componentConversionColor[components[i % components.Length]];
-                                        if (component == "a")
+                                        if (convertComponent(components[i % components.Length], "index") == "3")
                                         {
                                             //Alpha channel weirdness
-                                            new_line = $"{body.Substring(0, body.Length-1)}, \"alpha\", {line_starter}{base_components[i]});";
+                                            new_line = $"{body.Substring(0, body.Length-1)}, \"alpha\", {line_starter}{convertComponent(base_components[i], getVariableType(set_var.Groups[1].Value))});";
                                         }
                                         else
                                         {
-                                            body = $"{body.Substring(0, body.Length - 1)}, \"firstchannel\", {componentIndex[base_components[i]]})";
+                                            body = $"{body.Substring(0, body.Length - 1)}, \"firstchannel\", {convertComponent(components[i % components.Length], "index")})";
                                             new_line = new_line.Insert(placeholder_index, $"{body}");
                                         }
                                     }
                                     else
                                     {
-                                        new_line = new_line.Insert(placeholder_index, $"{body}.{componentConversion[components[i % components.Length]]}");
+                                        new_line = new_line.Insert(placeholder_index, $"{body}{convertComponent(components[i % components.Length], "RGBA")}");
                                     }
                                 }
                                 else
@@ -792,6 +832,7 @@ public class OslConverter
                                 }
                                 else
                                 {
+                                    variableTypes.Add(parts[i], type);
                                     osl.AppendLine($"\t{type} {parts[i].Trim()} = {GetDefaultValue(type)};");
                                 }
                             }
