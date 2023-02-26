@@ -196,6 +196,7 @@ public class OslConverter
             "\tfloat x;\n" +
             "\tfloat y;\n" +
             "};");
+        osl.AppendLine("#include \"stdosl.h\"\r\nvector saturate (vector x)\r\n{\r\n    return clamp(x, 0, 1);\r\n}\r\n\r\nfloat saturate (float x)\r\n{\r\n    return clamp(x, 0, 1);\r\n}\r\n\r\nfloat frac(float x) {\r\n    return x - floor(x);\r\n}\r\n");
     }
     private void WriteCbuffers(Material material, bool bIsVertexShader)
     {
@@ -369,6 +370,7 @@ public class OslConverter
     private void WriteFunctionDefinition(bool bIsVertexShader, Material material)
     {
         osl.AppendLine("#define cmp -");
+        osl.AppendLine("#define rsqrt inversesqrt");
         osl.AppendLine("shader main(");
         foreach (var i in inputs)
         {
@@ -397,14 +399,25 @@ public class OslConverter
     }
     private Dictionary<char, string> componentConversion = new Dictionary<char, string>()
     {
-        { 'x', "rgb.x" },
-        { 'y', "rgb.y" },
-        { 'z', "rgb.z" },
+        { 'x', "rgb[0]" },
+        { 'y', "rgb[1]" },
+        { 'z', "rgb[2]" },
         { 'w', "w" },
-        { 'r', "rgb.x" },
-        { 'g', "rgb.y" },
-        { 'b', "rgb.z" },
+        { 'r', "rgb[0]" },
+        { 'g', "rgb[1]" },
+        { 'b', "rgb[2]" },
         { 'a', "w" }
+    };
+    private Dictionary<char, int> componentIndex = new Dictionary<char, int>()
+    {
+        { 'x', 0 },
+        { 'y', 1 },
+        { 'z', 2 },
+        { 'w', 3 },
+        { 'r', 0 },
+        { 'g', 1 },
+        { 'b', 2 },
+        { 'a', 3 }
     };
     private Dictionary<char, string> componentConversionColor = new Dictionary<char, string>()
     {
@@ -470,17 +483,7 @@ public class OslConverter
         Match dim4 = Regex.Match(body, query);
         while (dim4.Success)
         {
-            int index = dim4.Groups[9].Value[i % dim4.Groups[9].Length] switch
-            {
-                'x' => 1,
-                'y' => 2,
-                'z' => 3,
-                'w' => 4,
-                'r' => 1,
-                'g' => 2,
-                'b' => 3,
-                'a' => 4
-            };
+            int index = componentIndex[dim4.Groups[9].Value[i % dim4.Groups[9].Length]]+1;
             if (dim4.Groups[5].Length > 0) { index += 5; }
 
             string replacement = dim4.Groups[index].Value;
@@ -551,14 +554,14 @@ public class OslConverter
                 // todo add load, levelofdetail, o0.w, discard
                 else if (line.Contains("discard"))
                 {
-                    StringBuilder discard = new StringBuilder();
-                    discard.AppendLine("{");
-                    foreach (Output output in outputs)
-                    {
-                        discard.AppendLine($"\t\toutput {output.Type} {output.Variable} = {GetDefaultValue(output.Type)};");
-                    }
-                    discard.AppendLine("\t\treturn;\n\t}");
-                    osl.AppendLine(line.Replace("discard;", discard.ToString()));
+                    //StringBuilder discard = new StringBuilder();
+                    //discard.AppendLine("{");
+                    //foreach (Output output in outputs)
+                    //{
+                    //    discard.AppendLine($"\t\t{output.Variable} = {GetDefaultValue(output.Type)};");
+                    //}
+                    //discard.AppendLine("\t\treturn;\n\t}");
+                    //osl.AppendLine(line.Replace("discard;", discard.ToString()));
                 }                
                 else
                 {
@@ -593,7 +596,7 @@ public class OslConverter
                                 {
                                     //2D lookup
                                     funcList.Add(new Tuple<string, string>(
-                                        $"texture({mparams[0]}, {split[0]}, {split[1]}, \"wrap\", \"clamp\")",
+                                        $"texture({mparams[0]}, {split[0]}, {split[1]}, \"wrap\", \"periodic\")",
                                         func.Groups[3].Value)
                                     );
                                 }
@@ -707,7 +710,7 @@ public class OslConverter
 
                         for (int i = 0; i < base_components.Length; i++)
                         {
-                            string new_line = line_starter + $"{base_components[i]} = {placeholder}";
+                            string new_line = line_starter + $"{componentConversion[base_components[i]]} = {placeholder}";
 
                             if (new_line.Contains("vector") || (new_line.Contains("{") && new_line.Contains("}")))
                             {                                
@@ -754,7 +757,8 @@ public class OslConverter
                                         }
                                         else
                                         {
-                                            new_line = new_line.Insert(placeholder_index, $"{body}.{component}");
+                                            body = $"{body.Substring(0, body.Length - 1)}, \"firstchannel\", {componentIndex[base_components[i]]})";
+                                            new_line = new_line.Insert(placeholder_index, $"{body}");
                                         }
                                     }
                                     else
@@ -788,7 +792,7 @@ public class OslConverter
                                 }
                                 else
                                 {
-                                    osl.AppendLine($"\t{type} {parts[i].Trim()} = {GetDefaultValue(type)}");
+                                    osl.AppendLine($"\t{type} {parts[i].Trim()} = {GetDefaultValue(type)};");
                                 }
                             }
                         }
@@ -862,6 +866,6 @@ public class OslConverter
 
     private void WriteFooter(bool bIsVertexShader)
     {
-        osl.AppendLine("};");
+        osl.AppendLine("}");
     }
 }
