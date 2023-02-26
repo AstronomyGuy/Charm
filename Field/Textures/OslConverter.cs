@@ -194,7 +194,7 @@ public class OslConverter
             "};");
         osl.AppendLine("struct Dual {\n" +
             "\tfloat x;\n" +
-            "\tfloat y\n" +
+            "\tfloat y;\n" +
             "};");
     }
     private void WriteCbuffers(Material material, bool bIsVertexShader)
@@ -361,7 +361,7 @@ public class OslConverter
                         throw new NotImplementedException();
                 }  
             }
-
+            osl.Remove(osl.ToString().LastIndexOf(','), 1);
             osl.AppendLine("\t};");
         }
     }

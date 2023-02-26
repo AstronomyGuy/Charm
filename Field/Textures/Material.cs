@@ -207,6 +207,10 @@ public class Material : Tag
                     {
                         File.WriteAllText($"{saveDirectory}/Blender/PS_{Hash}.osl", osl);
                     }
+                    if (!File.Exists($"{saveDirectory}/Blender/Meta_{Hash}.json"))
+                    {
+                        File.WriteAllText($"{saveDirectory}/Blender/Meta_{Hash}.json", CreateTextureManifest().ToString());
+                    }
                     Console.WriteLine($"Saved pixel shader {Hash}");
                 }
                 catch (IOException)  // threading error
@@ -283,7 +287,11 @@ public class Material : Tag
                 {
                     File.WriteAllText($"{saveDirectory}/VS_{Hash}.usf", usf);
                     File.WriteAllText($"{saveDirectory}/Blender/VS_{Hash}.osl", osl);
-                    Console.WriteLine($"Saved vertex shader {Hash}");
+                    if (!File.Exists($"{saveDirectory}/Blender/Meta_{Hash}.json"))
+                    {
+                        File.WriteAllText($"{saveDirectory}/Blender/Meta_{Hash}.json", CreateTextureManifest().ToString());
+                    }
+                    Console.WriteLine($"Saved vertex shader {Hash}");                    
                 }
                 catch (IOException)  // threading error
                 {
@@ -313,6 +321,10 @@ public class Material : Tag
                 {
                     File.WriteAllText($"{saveDirectory}/CS_{Hash}.usf", usf);
                     File.WriteAllText($"{saveDirectory}/Blender/CS_{Hash}.osl", osl);
+                    if (!File.Exists($"{saveDirectory}/Blender/Meta_{Hash}.json"))
+                    {
+                        File.WriteAllText($"{saveDirectory}/Blender/Meta_{Hash}.json", CreateTextureManifest().ToString());
+                    }
                     Console.WriteLine($"Saved compute shader {Hash}");
                 }
                 catch (IOException)  // threading error
