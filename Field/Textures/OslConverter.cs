@@ -561,7 +561,7 @@ public class OslConverter
 
         //Insert w_dummy variable
         //The sole reason that this exists is to allow us to get the alpha channel from a given texture without overriding other data        
-        osl.AppendLine("\tint w_dummy = 0;");
+        osl.AppendLine("\tvector w_dummy = 0;");
 
         hlsl.ReadLine();
         do
@@ -802,18 +802,20 @@ public class OslConverter
                                 if (components.Length > 0)
                                 {
                                     if (body.Contains("texture")) {
+                                        string real_func = body.Split("||")[0];
+                                        string idx = body.Split("||")[1];
                                         if (convertComponent(components[i % components.Length], "index") == "3")
                                         {
                                             //Alpha channel weirdness
 
                                             //Can be optimized by cutting out w_dummy and inserting the alpha call when one of the color channels are set
                                             //However then you have to deal with the possibility of there *not* being a call to other channels, etc etc
-                                            new_line = $"w_dummy = {body.Split("||")[0].Substring(0, body.Length-1)}, \"firstchannel\", 0, \"alpha\", {line_starter}{convertComponent(base_components[i], getVariableType(set_var.Groups[1].Value))});";
+                                            new_line = $"w_dummy = {real_func.Substring(0, real_func.Length-1)}, \"alpha\", {line_starter}{convertComponent(base_components[i], getVariableType(set_var.Groups[1].Value))});";
                                         }
                                         else
                                         {
-                                            body = $"{body.Split("||")[0].Substring(0, body.Length - 1)}, \"firstchannel\", {convertComponent(components[i % components.Length], "index")})";
-                                            if (material.isTexSRGB(long.Parse(body.Split("||")[1]))) {
+                                            body = $"{real_func.Substring(0, real_func.Length - 1)}, \"firstchannel\", {convertComponent(components[i % components.Length], "index")})";
+                                            if (material.isTexSRGB(long.Parse(idx))) {
                                                 body = $"pow({body}, 2.33333333)";
                                             }
                                             new_line = new_line.Insert(placeholder_index, $"{body}");
