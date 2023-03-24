@@ -816,7 +816,7 @@ public class OslConverter
                                         {
                                             body = $"{real_func.Substring(0, real_func.Length - 1)}, \"firstchannel\", {convertComponent(components[i % components.Length], "index")})";
                                             if (material.isTexSRGB(long.Parse(idx))) {
-                                                body = $"pow({body}, 2.33333333)";
+                                                body = $"pow({body}, 2.2)";
                                             }
                                             new_line = new_line.Insert(placeholder_index, $"{body}");
                                         }
