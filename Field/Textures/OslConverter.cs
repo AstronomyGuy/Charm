@@ -104,7 +104,7 @@ public class OslConverter
         //WriteCbuffers(material, bIsVertexShader); Done during function definition
         WriteFunctionDefinition(bIsVertexShader, material);
         hlsl = new StringReader(hlslText);
-        bool success = ConvertInstructions();
+        bool success = ConvertInstructions(material);
         if (!success)
         {
             return "";
@@ -535,7 +535,7 @@ public class OslConverter
 
         return body;
     }
-        private bool ConvertInstructions()
+    private bool ConvertInstructions(Material material)
     {
         Dictionary<int, Texture> texDict = new Dictionary<int, Texture>();
         foreach (var texture in textures)
@@ -559,6 +559,10 @@ public class OslConverter
             }
         }
 
+        //Insert w_dummy variable
+        //The sole reason that this exists is to allow us to get the alpha channel from a given texture without overriding other data        
+        osl.AppendLine("\tint w_dummy = 0;");
+
         hlsl.ReadLine();
         do
         {
@@ -566,7 +570,8 @@ public class OslConverter
 
             if (line != null)
             {
-                //Pre-processing
+                ///Pre-processing
+
                 // Partial Derivative functions
                 line = Regex.Replace(line, "dd([xyz])(?:_coarse|_fine)", "D$1");
                 // Manual vector declarations
@@ -615,6 +620,7 @@ public class OslConverter
                         string placeholder = Regex.Replace(eq_sides[1], "([A-Za-z_][A-Za-z_0-9\\.]*)\\((.*)\\)\\.?([xyzwrgba]{0,4})", "ø");
                         List<Tuple<string, string>> funcList = new List<Tuple<string, string>>();
                         int match_idx = 0;
+
                         /// Escape for special functions   
                         foreach (Match func in Regex.Matches(line, "([A-Za-z_][A-Za-z_0-9\\.]*)\\((.*)\\)\\.?([xyzwrgba]{0,4})"))
                         {
@@ -627,6 +633,10 @@ public class OslConverter
                                 //Split input coord into separate coordinates
                                 string[] split = splitVariable(mparams[1]);
 
+                                //Get Texture Index
+                                //Index is long to match format of D2Class_CF6D8080, realistically it'll never get close to using that
+                                long index = long.Parse(mparams[0].Substring(1));
+
                                 /// --- NOTES FOR ALPHA HANDLING ---
                                 /// The alpha channel needs to be referenced with an additional parameter: ..., "alpha", <variable>
                                 /// This requires a dummy variable to dump the alpha value into and a bunch of other special handling
@@ -634,10 +644,10 @@ public class OslConverter
                                 ///  Example: https://github.com/AcademySoftwareFoundation/OpenShadingLanguage/blob/main/testsuite/texture-alpha/test.osl
 
                                 if (split.Length == 2)
-                                {
+                                {                                    
                                     //2D lookup
                                     funcList.Add(new Tuple<string, string>(
-                                        $"texture({mparams[0]}, {split[0]}, {split[1]}, \"wrap\", \"periodic\")",
+                                        $"texture({mparams[0]}, {split[0]}, {split[1]}, \"wrap\", \"periodic\")||{index}",
                                         func.Groups[3].Value)
                                     );
                                 }
@@ -645,7 +655,7 @@ public class OslConverter
                                 {
                                     //3D lookup
                                     funcList.Add(new Tuple<string, string>(
-                                        $"texture3d({mparams[0]}, {split[0]}, {split[1]}, {split[2]})",
+                                        $"texture3d({mparams[0]}, {split[0]}, {split[1]}, {split[2]})||{index}",
                                         func.Groups[3].Value)
                                     );
                                 }
@@ -738,6 +748,7 @@ public class OslConverter
                             /// Remaining Functions: faceforward, reflect, refract, fresnel, rotate
                             /// Not included because I don't think they're used in HLSL
                         }
+                        
                         placeholder = Regex.Replace(placeholder, "([A-Za-z_][A-Za-z_0-9\\[\\]]+)\\.([xyzwrgba]{1,4})", "§");
 
 
@@ -778,6 +789,7 @@ public class OslConverter
 
                             placeholder_index = new_line.IndexOf('ø');
                             placeholders_iter = 0;
+
                             //Construct functions
                             while (placeholder_index != -1)
                             {
@@ -793,11 +805,17 @@ public class OslConverter
                                         if (convertComponent(components[i % components.Length], "index") == "3")
                                         {
                                             //Alpha channel weirdness
-                                            new_line = $"{body.Substring(0, body.Length-1)}, \"alpha\", {line_starter}{convertComponent(base_components[i], getVariableType(set_var.Groups[1].Value))});";
+
+                                            //Can be optimized by cutting out w_dummy and inserting the alpha call when one of the color channels are set
+                                            //However then you have to deal with the possibility of there *not* being a call to other channels, etc etc
+                                            new_line = $"w_dummy = {body.Split("||")[0].Substring(0, body.Length-1)}, \"firstchannel\", 0, \"alpha\", {line_starter}{convertComponent(base_components[i], getVariableType(set_var.Groups[1].Value))});";
                                         }
                                         else
                                         {
-                                            body = $"{body.Substring(0, body.Length - 1)}, \"firstchannel\", {convertComponent(components[i % components.Length], "index")})";
+                                            body = $"{body.Split("||")[0].Substring(0, body.Length - 1)}, \"firstchannel\", {convertComponent(components[i % components.Length], "index")})";
+                                            if (material.isTexSRGB(long.Parse(body.Split("||")[1]))) {
+                                                body = $"pow({body}, 2.33333333)";
+                                            }
                                             new_line = new_line.Insert(placeholder_index, $"{body}");
                                         }
                                     }

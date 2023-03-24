@@ -380,6 +380,24 @@ public class Material : Tag
             textureMeta[e.TextureIndex.ToString()] = e.Texture.Hash.ToString();
         return textureMeta;
     }
+
+    public bool isTexSRGB(long index) {
+        List<D2Class_CF6D8080> textures = null;
+        if (Header.PixelShader != null) { textures = Header.PSTextures; }
+        if (Header.VertexShader != null) { textures = Header.VSTextures; }
+        if (Header.ComputeShader != null) { textures = Header.CSTextures; }      
+        
+        //Can't directly take the value at index because TextureIndex may not be the same as the literal list index
+        foreach (D2Class_CF6D8080 tex in textures)
+        {
+            if (tex.TextureIndex == index)
+            {
+                return tex.Texture.IsSrgb();
+            }
+        }
+        //Incorrect index passed
+        throw new IndexOutOfRangeException($"Texture index ({index}) out of range");
+    } 
     
     #endregion
     
